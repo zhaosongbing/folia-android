@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
-import { AnimatePresence, motion, useMotionValueEvent } from 'framer-motion';
+import { AnimatePresence, motion, useMotionValue, useMotionValueEvent } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft } from 'lucide-react';
 import { loadCachedOrFetchCover } from './services/coverCache';
@@ -138,6 +138,16 @@ import { selectVisualizerSettingsSnapshot, useVisualizerSettingsStore } from './
 import { selectLyricSettingsSnapshot, useLyricSettingsStore } from './stores/useLyricSettingsStore';
 import { selectTypographySettingsSnapshot, useTypographySettingsStore } from './stores/useTypographySettingsStore';
 import { selectPlayerChromeSettingsSnapshot, usePlayerChromeSettingsStore } from './stores/usePlayerChromeSettingsStore';
+import { usePlayerDoubleTapGesture } from './components/app/playback/usePlayerDoubleTapGesture';
+import { usePlayerLongPressGesture } from './components/app/playback/usePlayerLongPressGesture';
+import type { DoubleTapZone } from './components/app/playback/doubleTapGesture';
+import PlayerDoubleTapFeedback, { type PlayerDoubleTapCue, type PlayerGestureCueKind } from './components/app/overlays/PlayerDoubleTapFeedback';
+import PlayerLongPressHandle from './components/app/overlays/PlayerLongPressHandle';
+import AppUpdateDialog from './components/modal/AppUpdateDialog';
+import ExitConfirmDialog from './components/modal/ExitConfirmDialog';
+import { moveAppToBack } from './services/appExit';
+import { useAppUpdateStore } from './stores/useAppUpdateStore';
+import { applySystemBarsVisibility } from './services/systemBars';
 import { selectThemeSettingsSnapshot, useThemeSettingsStore } from './stores/useThemeSettingsStore';
 import { useAutomixSettingsStore } from './stores/useAutomixSettingsStore';
 import { selectDesktopSettingsSnapshot, useDesktopSettingsStore } from './stores/useDesktopSettingsStore';
@@ -229,11 +239,13 @@ export default function App() {
     const {
         isPanelOpen, setIsPanelOpen,
         setPanelTab,
+        setPlayerPanelAnchor,
         isHomeFullyHidden, setIsHomeFullyHidden,
     } = useAppViewStore(useShallow(state => ({
         isPanelOpen: state.isPanelOpen,
         setIsPanelOpen: state.setIsPanelOpen,
         setPanelTab: state.setPanelTab,
+        setPlayerPanelAnchor: state.setPlayerPanelAnchor,
         isHomeFullyHidden: state.isHomeFullyHidden,
         setIsHomeFullyHidden: state.setIsHomeFullyHidden,
     })));
@@ -443,6 +455,8 @@ export default function App() {
         handleToggleAutoHidePlayerChrome,
         autoHideCursorWithPlayerChrome,
         hideCursorWhenIdle,
+        enablePlayerDoubleTapGesture,
+        enablePlayerLongPressQueue,
         alwaysShowMainWindowTitlebar,
         hideFullscreenButton,
         handleToggleTransparentPlayerBackground,
@@ -1571,6 +1585,203 @@ export default function App() {
     ]);
     const isNowPlayingControlDisabled = isNowPlayingStageActive;
 
+    // ---- 播放页双击手势 ----
+    // 左区上一首、中区播放/暂停、右区下一首。区域比例与判定边界全部收在
+    // components/app/playback/doubleTapGesture.ts 的常量里（左右各 30%、中间 40%，
+    // 交界点归中区），这里只负责把动作和落点反馈接上。
+    const [doubleTapCue, setDoubleTapCue] = useState<PlayerDoubleTapCue | null>(null);
+    const doubleTapCueIdRef = useRef(0);
+    const doubleTapCueTimerRef = useRef<number | null>(null);
+    // armed 那一帧要留久一点：长按成立后用户还在决定往哪滑，420ms 就撤掉会显得「闪一下没了」。
+    const GESTURE_CUE_DURATION_MS = { zone: 420, armed: 1200, slide: 420 } as const;
+    const showGestureCue = useCallback((
+        kind: PlayerGestureCueKind,
+        options: { zone?: DoubleTapZone; direction?: 'left' | 'right'; x: number; y: number },
+    ) => {
+        doubleTapCueIdRef.current += 1;
+        setDoubleTapCue({
+            id: doubleTapCueIdRef.current,
+            kind,
+            zone: options.zone,
+            direction: options.direction,
+            x: options.x,
+            y: options.y,
+            // 中区图标表达「即将变成什么」：正在播放时显示暂停图标，暂停时显示播放图标。
+            //
+            // 状态源用 selectDisplayPlayerState —— 这是工程里约定给「对外展示」用的状态
+            // （把尾奏/加载中的 IDLE 映射成 PLAYING）。播放按钮现在也读它，
+            // 两处同源，用户看到的按钮图标与反馈图标永远一致。
+            playing: displayPlayerState === PlayerState.PLAYING,
+        });
+        if (doubleTapCueTimerRef.current !== null) window.clearTimeout(doubleTapCueTimerRef.current);
+        doubleTapCueTimerRef.current = window.setTimeout(() => {
+            setDoubleTapCue(null);
+            doubleTapCueTimerRef.current = null;
+        }, GESTURE_CUE_DURATION_MS[kind]);
+    }, [displayPlayerState]);
+    const showDoubleTapCue = useCallback((zone: DoubleTapZone, clientX: number, clientY: number) => {
+        showGestureCue('zone', { zone, x: clientX, y: clientY });
+    }, [showGestureCue]);
+    useEffect(() => () => {
+        if (doubleTapCueTimerRef.current !== null) window.clearTimeout(doubleTapCueTimerRef.current);
+    }, []);
+
+    // ---- 系统栏：按设置显示/隐藏状态栏与导航栏（原生插件，浏览器里是空操作）----
+    const showSystemBars = usePlayerChromeSettingsStore(state => state.showSystemBars);
+    useEffect(() => {
+        void applySystemBarsVisibility(showSystemBars);
+    }, [showSystemBars]);
+
+    // ---- 系统返回键：有弹窗先关弹窗，否则按设置决定是否二次确认 ----
+    // 原生 MainActivity.onBackPressed() 通过 evaluateJavascript 同步调用 window.__foliaHandleBack，
+    // 返回 'handled' 表示已处理（不要退到桌面），'exit' 表示可以走。
+    const confirmOnExit = usePlayerChromeSettingsStore(state => state.confirmOnExit);
+    const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
+    useEffect(() => {
+        const handleBack = (): 'handled' | 'exit' => {
+            // 1) 有模态弹窗：派发 Escape 让它自己关（工程的模态都监听这个键）
+            if (document.querySelector('[aria-modal="true"]')) {
+                const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+                window.dispatchEvent(event);
+                document.dispatchEvent(event);
+                return 'handled';
+            }
+            // 2) 二次确认开着：先问一句
+            if (confirmOnExit) {
+                setExitConfirmOpen(true);
+                return 'handled';
+            }
+            return 'exit';
+        };
+        (window as unknown as { __foliaHandleBack?: () => 'handled' | 'exit' }).__foliaHandleBack = handleBack;
+        return () => {
+            delete (window as unknown as { __foliaHandleBack?: () => 'handled' | 'exit' }).__foliaHandleBack;
+        };
+    }, [confirmOnExit]);
+
+    // ---- 在线更新：启动后延迟几秒检查一次，有新版本就弹窗 ----
+    // 延迟是为了不和首屏动画、封面加载抢网络；检查本身很轻（一个 releases/latest 请求）。
+    const availableUpdate = useAppUpdateStore(state => state.availableUpdate);
+    const checkAppUpdate = useAppUpdateStore(state => state.checkNow);
+    const skipUpdateVersion = useAppUpdateStore(state => state.handleSkipUpdateVersion);
+    const dismissUpdate = useAppUpdateStore(state => state.dismissUpdate);
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            void checkAppUpdate(false);
+        }, 4000);
+        return () => window.clearTimeout(timer);
+    }, [checkAppUpdate]);
+    // 与其它传输入口用同一道闸门：Now Playing 舞台接管播放时不响应，避免和舞台自己的控制打架。
+    // 另外只在播放页生效：这个视觉层在首页也当作背景渲染，不限制的话首页双击会误切歌。
+    const doubleTapHandlers = usePlayerDoubleTapGesture({
+        enabled: enablePlayerDoubleTapGesture && currentView === 'player',
+        onPrev: () => {
+            if (isNowPlayingControlDisabled) return;
+            void handlePrevTrack();
+        },
+        onNext: () => {
+            if (isNowPlayingControlDisabled) return;
+            void handleNextTrack();
+        },
+        onToggle: () => {
+            if (isNowPlayingControlDisabled) return;
+            togglePlay();
+        },
+        onFeedback: showDoubleTapCue,
+    });
+
+    // ---- 播放页长按手势：长按后在落点浮现一个可滑的按钮，向左滑打开命令面板，向右滑打开播放列表 ----
+    // 长按本身不再打开任何东西（fix10 改的）：只负责把那个按钮亮出来，动作全靠滑动完成，
+    // 这样「长按了然后滑」是一条完整的手势，不会出现长按就弹面板、想滑却已经开了东西的情况。
+    const [longPressHandle, setLongPressHandle] = useState<{ x: number; y: number } | null>(null);
+    // 滑轨的跟手位移走 MotionValue：pointermove 每帧都来，用 setState 会整层重渲染
+    const longPressSlideX = useMotionValue(0);
+    const openQueueAt = useCallback((clientX: number, clientY: number) => {
+        // 先记锚点再打开：面板按这个坐标展开，关掉时由 setIsPanelOpen 统一清掉。
+        setPlayerPanelAnchor({ x: clientX, y: clientY });
+        setPanelTab('queue');
+        setIsPanelOpen(true);
+    }, []);
+    // 兜底：窗口失焦、页面切到后台时，pointer 事件可能整个丢失，滑轨会留在屏幕上
+    useEffect(() => {
+        if (!longPressHandle) return;
+        const clear = () => setLongPressHandle(null);
+        window.addEventListener('blur', clear);
+        document.addEventListener('visibilitychange', clear);
+        return () => {
+            window.removeEventListener('blur', clear);
+            document.removeEventListener('visibilitychange', clear);
+        };
+    }, [longPressHandle]);
+
+    const longPressHandlers = usePlayerLongPressGesture({
+        enabled: enablePlayerLongPressQueue && currentView === 'player',
+        onArmed: (clientX, clientY) => {
+            if (isNowPlayingControlDisabled) return;
+            longPressSlideX.set(0);
+            setLongPressHandle({ x: clientX, y: clientY });
+        },
+        onSlideProgress: (deltaX) => {
+            longPressSlideX.set(deltaX);
+        },
+        onSlideLeft: () => {
+            if (isNowPlayingControlDisabled) return;
+            longPressSlideX.set(0);
+            setLongPressHandle(null);
+            commandPalette.open();
+        },
+        onSlideRight: (clientX, clientY) => {
+            if (isNowPlayingControlDisabled) return;
+            longPressSlideX.set(0);
+            setLongPressHandle(null);
+            openQueueAt(clientX, clientY);
+        },
+        onCancel: () => {
+            // 一次都没滑成：收起滑轨，什么都不做
+            longPressSlideX.set(0);
+            setLongPressHandle(null);
+        },
+    });
+    // 滑动手势的落点反馈：方向图标跟着手势走，让用户看到「这一滑认成了什么」。
+    // 先把原引用取出来再覆盖：直接在覆盖后的函数里调自己会调到可选链上、类型也过不去。
+    const slideLeft = longPressHandlers.onSlideLeft;
+    const slideRight = longPressHandlers.onSlideRight;
+    const longPressCueHandlers = {
+        ...longPressHandlers,
+        onSlideLeft: (clientX: number, clientY: number) => {
+            slideLeft?.(clientX, clientY);
+            showGestureCue('slide', { direction: 'left', x: clientX, y: clientY });
+        },
+        onSlideRight: (clientX: number, clientY: number) => {
+            slideRight?.(clientX, clientY);
+            showGestureCue('slide', { direction: 'right', x: clientX, y: clientY });
+        },
+    };
+
+    // 两套手势共用同一个 surface，同名的处理器会互相覆盖，所以在这里合并成一套。
+    // onClickCapture 两个都调：各自内部只吞自己那一次 click，另一个的开关没置位就直接放过。
+    const playerSurfaceHandlers = {
+        onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => {
+            doubleTapHandlers.onPointerDown(event);
+            longPressCueHandlers.onPointerDown(event);
+        },
+        onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => {
+            longPressCueHandlers.onPointerMove(event);
+        },
+        onPointerUp: (event: React.PointerEvent<HTMLDivElement>) => {
+            doubleTapHandlers.onPointerUp(event);
+            longPressCueHandlers.onPointerUp(event);
+        },
+        onPointerCancel: (event: React.PointerEvent<HTMLDivElement>) => {
+            doubleTapHandlers.onPointerCancel(event);
+            longPressCueHandlers.onPointerCancel(event);
+        },
+        onClickCapture: (event: React.MouseEvent<HTMLDivElement>) => {
+            doubleTapHandlers.onClickCapture(event);
+            longPressHandlers.onClickCapture(event);
+        },
+    };
+
     useElectronWindowChrome();
     const {
         isPlayerView,
@@ -2238,6 +2449,12 @@ export default function App() {
         handlePreviewVolume,
         isNowPlayingControlDisabled,
         openCommandPalette: commandPalette.open,
+        // 右侧按钮长按后向右滑：播放列表在按钮所在位置展开（和长按屏幕用的是同一条锚点链路）
+        openQueueAt: (clientX: number, clientY: number) => {
+            setPlayerPanelAnchor({ x: clientX, y: clientY });
+            setPanelTab('queue');
+            setIsPanelOpen(true);
+        },
         isCommandPaletteOpen: commandPalette.isOpen,
         playQueue: playerDisplayQueue,
         playSong,
@@ -2804,13 +3021,47 @@ export default function App() {
                 className={`absolute inset-0 z-0${(shouldHidePlayerCursor || idleCursorHidden) ? ' cursor-auto-hidden' : ''}${visualizerAroundWall.fadesIn ? ' visualizer-comes-up' : ''}`}
                 data-testid="player-visual-surface"
                 data-library-backdrop-blur={blursVisualizerBackdrop || undefined}
-                style={visualizerBackdropStyle(blursVisualizerBackdrop)}
+                style={{
+                    ...visualizerBackdropStyle(blursVisualizerBackdrop),
+                    // 播放页只把横向手势留给应用：不设这个，手指一横移浏览器就判定为滚动手势，
+                    // 直接发 pointercancel 掐断事件流 —— 长按滑轨「一亮就被收走」就是这么来的。
+                    // 用 pan-y 而不是 none：纵向滚动照常可用（不需要横向滚动的页面元素不受影响）。
+                    ...(currentView === 'player' ? { touchAction: 'pan-y' as const } : {}),
+                }}
                 onClick={handleContainerClick}
+                {...playerSurfaceHandlers}
             >
                 <PlayerBottomBarLayoutContext.Provider value={currentView === 'player'}>
                     {shouldMountVisualizer && <VisualizerRenderer {...visualizerRendererModel} animateStyleSwitch />}
                 </PlayerBottomBarLayoutContext.Provider>
             </div>
+
+            {/* 双击手势的落点反馈：只在触发后短暂出现，pointer-events-none，不占版面 */}
+            <PlayerDoubleTapFeedback cue={doubleTapCue} />
+
+            {/* 长按手势的落点控件：长按成立后浮现，左右滑动命中或取消时收起 */}
+            <PlayerLongPressHandle position={longPressHandle} slideX={longPressSlideX} />
+
+            {/* 在线更新弹窗：下载走系统浏览器，APK 由系统安装器接管 */}
+            <AppUpdateDialog
+                info={availableUpdate}
+                onDownload={url => {
+                    window.open(url, '_blank', 'noopener,noreferrer');
+                    dismissUpdate();
+                }}
+                onLater={dismissUpdate}
+                onSkip={skipUpdateVersion}
+            />
+
+            {/* 返回键二次确认：点确定才真的退到桌面 */}
+            <ExitConfirmDialog
+                open={exitConfirmOpen}
+                onCancel={() => setExitConfirmOpen(false)}
+                onConfirm={() => {
+                    setExitConfirmOpen(false);
+                    void moveAppToBack();
+                }}
+            />
 
             <StageSessionEmptyState
                 stageSource={stageSource}

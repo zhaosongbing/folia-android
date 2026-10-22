@@ -8,7 +8,7 @@ import { openSettings } from '../../../../stores/useSettingsModalStore';
 import { useThemeSettingsStore } from '../../../../stores/useThemeSettingsStore';
 import { useVisualizerSettingsStore } from '../../../../stores/useVisualizerSettingsStore';
 import { openAIEndpointOf } from '../../../../utils/openAIEndpoint';
-import { Button, FoldedGroup, Group, NumberField, Reveal, Row, Segmented, TextField, Toggle, Value, option, parseNumberText, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
+import { Button, FoldedGroup, NumberField, Reveal, Row, Segmented, TextField, Toggle, Value, option, parseNumberText, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
 import { settingsAnchorSubview } from '../navigation/settingsAnchorModel';
 import { AiConnectionTestReply, useAiConnectionTest } from './AiConnectionTest';
 import { useSettingsPage, type AiApiKeyName } from './settingsPageContext';
@@ -107,14 +107,14 @@ const AppearancePage: React.FC = () => {
 
     return (
         <>
-            <Group def={LYRICS} bare>
+            <FoldedGroup def={LYRICS}>
                 {nativeBlurEnabled && <Row notice={t('options.nativeBlurBackgroundNotice')} />}
                 <Row option={O.lyricsAnimation} hint={t('options.lyricsRendererDesc')} onClick={onOpenVisPlayground}>
                     <Value>{getVisualizerModeLabel(visualizerMode, t)}</Value>
                 </Row>
-            </Group>
+            </FoldedGroup>
 
-            <Group def={THEME}>
+            <FoldedGroup def={THEME}>
                 <Row option={O.daylight} note={t('options.followSystemThemeDesc')}>
                     <Segmented<DaylightChoice>
                         value={followSystemTheme ? 'system' : isDaylight ? 'light' : 'dark'}
@@ -144,9 +144,9 @@ const AppearancePage: React.FC = () => {
                     />
                 </Row>
                 <Row option={O.themePark} onClick={onOpenThemePark} />
-            </Group>
+            </FoldedGroup>
 
-            <Group def={SONG_THEME}>
+            <FoldedGroup def={SONG_THEME}>
                 <Row option={O.autoSwitch} note={t('options.autoSwitchSongThemeDesc')}>
                     <Toggle checked={themeControls.songThemeAutoSwitchEnabled} onChange={themeControls.onToggleSongThemeAutoSwitch} />
                 </Row>
@@ -186,7 +186,7 @@ const AppearancePage: React.FC = () => {
                         disabled={!themeControls.hasCustomTheme}
                     />
                 </Row>
-            </Group>
+            </FoldedGroup>
 
             {isElectron && (
                 <FoldedGroup def={AI} summary={usesOpenAi ? t('options.otherCompatibleApi') : 'Google Gemini'}>

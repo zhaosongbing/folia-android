@@ -90,6 +90,9 @@ const FIELD_LABEL_KEYS: Record<string, string> = {
     // section heading, which is what that group of three buttons is actually labelled by.
     stageTrackPillMode: 'options.stageTrackPill',
     stageTrackPillTimeoutSec: 'options.stageTrackPillTimeout',
+    stageTrackPillHeightPx: 'options.stageTrackPillHeight',
+    stageTrackPillOffsetXPx: 'options.stageTrackPillOffsetX',
+    stageTrackPillOffsetYPx: 'options.stageTrackPillOffsetY',
     stageTrackPillOnHome: 'options.stageTrackPillOnHome',
     libraryWallStackEdges: 'options.bravaisStackEdges',
     libraryWallSeamClear: 'options.bravaisSeamClear',

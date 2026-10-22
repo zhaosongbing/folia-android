@@ -41,6 +41,8 @@ export type PanelTab = 'cover' | 'controls' | 'queue' | 'account' | 'local' | 'n
 
 type UnifiedPanelPlaybackProps = {
     isOpen: boolean;
+    /** 长按入口的展开锚点；null = 面板贴右缘的默认形态。 */
+    anchor: { x: number; y: number } | null;
     onTabChange: (tab: PanelTab) => void;
     onToggle: () => void;
     onNavigateHome: () => void;
@@ -99,6 +101,8 @@ type UnifiedPanelPlaybackProps = {
     playbackControlsDisabled?: boolean;
     onOpenSettings?: () => void;
     onOpenCommandPalette?: () => void;
+    /** 右侧按钮长按后向右滑：在给定坐标处展开播放列表。 */
+    onOpenQueueAt?: (clientX: number, clientY: number) => void;
     isCommandPaletteOpen?: boolean;
     transparentPlayerBackground: boolean;
     onToggleTransparentPlayerBackground: (enable: boolean) => void;
@@ -155,6 +159,7 @@ const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
     const currentTab = useAppViewStore(state => state.panelTab);
     const {
         isOpen,
+        anchor,
         onTabChange,
         onToggle,
         onNavigateHome,
@@ -212,6 +217,7 @@ const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
         playbackControlsDisabled = false,
         onOpenSettings,
         onOpenCommandPalette,
+        onOpenQueueAt,
         isCommandPaletteOpen = false,
         transparentPlayerBackground,
         onToggleTransparentPlayerBackground,
@@ -305,6 +311,7 @@ const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
     return (
         <PanelShell
             isOpen={isOpen}
+            anchor={anchor}
             hasHandle={showOpenPanelCloseButton && !hideToggleButton}
             isCover={isCover}
             tabKey={currentTab}
@@ -365,6 +372,7 @@ const UnifiedPanel: React.FC<UnifiedPanelProps> = ({
                     isPanelGuideHotspotActive={isPanelGuideHotspotActive}
                     hideToggleButton={hideToggleButton}
                     onOpenCommandPalette={onOpenCommandPalette}
+                    onOpenQueueAt={onOpenQueueAt}
                     isCommandPaletteOpen={isCommandPaletteOpen}
                 />
             )}

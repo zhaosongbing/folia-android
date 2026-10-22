@@ -53,6 +53,7 @@ export const usePlayerPanelModel = ({
 }: PlayerPanelModelInputs): PlayerPanelViewModel => {
     const { t } = useTranslation();
     const isPanelOpen = useAppViewStore(state => state.isPanelOpen);
+    const playerPanelAnchor = useAppViewStore(state => state.playerPanelAnchor);
     const isPlayerChromeHidden = useAppChromeStore(state => state.isPlayerChromeHidden);
     const isPanelGuideHotspotActive = useAppChromeStore(state => state.isPlayerPanelGuideHotspotActive);
     const starredNavidromeSongIds = useLibraryStore(state => state.starredNavidromeSongIds);
@@ -107,6 +108,7 @@ export const usePlayerPanelModel = ({
         ...deps,
         ...collectionEntries,
         isPanelOpen,
+        playerPanelAnchor,
         coverUrl: displayCoverUrl,
         isLiked,
         hasLyrics: Boolean(displayLyrics),

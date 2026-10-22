@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLibraryWallLookStore } from '../../../stores/useLibraryWallLookStore';
 import type { LibraryHomeSurfaceProps } from '../../core/suite/suite.contract';
 import type { LibraryHomeTabKey, LibraryHomeTabView } from '../../core/home/homeModel.contract';
 import { isOnlineHomeTab } from '../../core/home/homeSources';
@@ -147,8 +148,11 @@ export const useBravaisHomeChrome = ({
 
     const scan = scanning ? t('libraryBravaisHome.scanProgress', { percent: scanPercent }) : null;
 
+    const seamTitle = useLibraryWallLookStore(state => state.seamTitle);
+
     return useMemo(() => ({
-        title: t('libraryBravais.homeTitle'),
+        // 标题可以被用户改（设置 → 主页 → 墙面）；留空就用默认的 Folia
+    title: seamTitle.trim() || t('libraryBravais.homeTitle'),
         tabs: seamTabs,
         onSelectTab,
         cycleTab,

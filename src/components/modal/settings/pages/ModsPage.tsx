@@ -3,8 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ModManager } from '../../../../mods/manager/ModManager';
 import type { ModManagerClasses } from '../../../../mods/manager/modManagerClasses';
 import { useDesktopSettingsStore } from '../../../../stores/useDesktopSettingsStore';
-import { Group, Row, Status, Toggle, option, useSettingsKitTheme, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
-import { SettingsAnchor } from '../navigation/SettingsAnchorContext';
+import { FoldedGroup, Row, Status, Toggle, option, useSettingsKitTheme, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
 
 // src/components/modal/settings/pages/ModsPage.tsx
 // The 模组 page (desktop app only): the mod system's master switch, and under it the mod manager.
@@ -45,22 +44,22 @@ const ModsPage: React.FC = () => {
     const { isDaylight, theme } = useSettingsKitTheme();
     const enabled = useDesktopSettingsStore(state => state.modSystemEnabled);
     const setEnabled = useDesktopSettingsStore(state => state.handleToggleModSystem);
-    const managerTitle = t(MANAGER.titleKey);
 
     return (
         <>
-            <Group def={SYSTEM} bare>
+            <FoldedGroup def={SYSTEM}>
                 <Row option={O.enabled} hint={t('options.enableModSystemDesc')} note={t('options.enableModSystemDescSub')}>
                     <Status tone="warn">{t('mods.experimental')}</Status>
                     <Toggle checked={enabled} onChange={setEnabled} />
                 </Row>
-            </Group>
+            </FoldedGroup>
 
-            {/* The manager draws cards of its own, so this group is a heading over them, not a kit card. */}
-            <SettingsAnchor anchorId={MANAGER.id} label={managerTitle} className="mt-7">
-                <h3 className="mb-2 flex min-h-6 items-center px-1 text-[13px] font-semibold leading-5 text-[color:var(--st-t2)]">{managerTitle}</h3>
+            {/* The manager draws cards of its own. Wrapped in a folded group like every other
+                group on the page now: the heading row is the fold's, and the manager's own
+                cards sit inside it, so they hide and show with the group. */}
+            <FoldedGroup def={MANAGER}>
                 <ModManager classes={MANAGER_CLASSES} isDaylight={isDaylight} theme={theme ?? null} />
-            </SettingsAnchor>
+            </FoldedGroup>
         </>
     );
 };

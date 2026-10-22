@@ -58,6 +58,8 @@ const TrackTitleNavigator: React.FC<TrackTitleNavigatorProps> = ({
         beginSwitch,
     } = useTrackTitlePreview({ title, trackKey, prevTitle, nextTitle, disabled });
     const alwaysShowArrows = usePlayerChromeSettingsStore(state => state.alwaysShowTrackSwitchButtons);
+    // 播放/暂停两侧已经有切歌按钮了（fix8），歌名两侧这对箭头就变成可选项。
+    const showArrows = usePlayerChromeSettingsStore(state => state.showTitleTrackArrows);
 
     const isPreview = previewTitle !== null;
     const zoneClass = 'absolute inset-y-0 flex items-center';
@@ -70,7 +72,7 @@ const TrackTitleNavigator: React.FC<TrackTitleNavigatorProps> = ({
     const textClass = 'w-full truncate text-center text-sm font-bold';
 
     const renderArrow = (side: TrackNavSide) => {
-        if (disabled || (side === 'prev' ? !canPrev : !canNext)) {
+        if (disabled || !showArrows || (side === 'prev' ? !canPrev : !canNext)) {
             return null;
         }
 

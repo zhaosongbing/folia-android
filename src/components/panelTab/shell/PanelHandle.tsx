@@ -1,16 +1,29 @@
 import React from 'react';
-import { PANEL_SLIDE_CLAMP_PX, PANEL_SLIDE_TRACK_BASE_PX, PANEL_SLIDE_TRACK_FULL_PX, PANEL_SLIDE_TRIGGER_PX } from '../../../utils/panelSlideGesture';
-import { motion, AnimatePresence } from 'framer-motion';
+import {
+    PANEL_HANDLE_GESTURE_MOVE_SLOP_PX,
+    PANEL_HANDLE_LONG_PRESS_MS,
+    PANEL_SLIDE_CLAMP_PX,
+    PANEL_SLIDE_TRACK_BASE_PX,
+    PANEL_SLIDE_TRACK_FULL_PX,
+    PANEL_SLIDE_TRIGGER_PX,
+    shouldOpenQueueFromSlide,
+} from '../../../utils/panelSlideGesture';
+import { motion, AnimatePresence, useMotionValue } from 'framer-motion';
 import { Settings2, X, Command } from 'lucide-react';
 import type { Theme } from '../../../types';
 import { usePlayerBottomBarBottomPx } from '../../../hooks/usePlayerBottomBarBottomPx';
 import { usePlayerOverlayObstacle } from '../../../hooks/usePlayerOverlayLayout';
+import { usePlayerChromeSettingsStore } from '../../../stores/usePlayerChromeSettingsStore';
 
 // src/components/panelTab/shell/PanelHandle.tsx
 // The round button at the bottom right of the playing page that opens the panel and, white, closes
 // it. Slid to the left while the panel is closed, it opens the command palette instead: the track
 // it slides on, the feedback while it is dragged, and the guide that shows the track on hover or
 // after a touch beside it.
+//
+// 长按后向右滑则打开播放列表，并在按钮所在位置展开（见 onOpenQueueAt）。右滑必须长按前置：
+// 不设门槛的话，拇指从左往右划过按钮就会误开列表。长按本身不改变点击行为——纯长按松手
+// 仍然开关面板，只有「长按后动过了」才算手势，此时松手不再触发点击。
 
 const TOUCH_GUIDE_DISPLAY_MS = 1400;
 
@@ -23,6 +36,8 @@ type PanelHandleProps = {
     isPanelGuideHotspotActive: boolean;
     hideToggleButton: boolean;
     onOpenCommandPalette?: () => void;
+    /** 长按后向右滑：在给定坐标处展开播放列表。 */
+    onOpenQueueAt?: (clientX: number, clientY: number) => void;
     isCommandPaletteOpen: boolean;
 };
 
@@ -35,6 +50,7 @@ const PanelHandle: React.FC<PanelHandleProps> = ({
     isPanelGuideHotspotActive,
     hideToggleButton,
     onOpenCommandPalette,
+    onOpenQueueAt,
     isCommandPaletteOpen,
 }) => {
     const [showGuideLine, setShowGuideLine] = React.useState(false);
@@ -46,10 +62,35 @@ const PanelHandle: React.FC<PanelHandleProps> = ({
     const supportsHover = typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
     const commandSlideRef = React.useRef<{ startX: number; startY: number; triggered: boolean; } | null>(null);
     const suppressToggleClickRef = React.useRef(false);
+    const longPressTimerRef = React.useRef<number | null>(null);
+    const longPressFiredRef = React.useRef(false);
+    const longPressMovedRef = React.useRef(false);
+    const [longPressArmed, setLongPressArmed] = React.useState(false);
     const toggleButtonRef = React.useRef<HTMLButtonElement | null>(null);
     const trackEndIconRef = React.useRef<HTMLDivElement | null>(null);
     const trackFillRef = React.useRef<HTMLDivElement | null>(null);
     const canSlideOpenCommandPalette = !isOpen && Boolean(onOpenCommandPalette);
+    // 右滑开列表同样只在面板关闭时有意义：开着的时候这个按钮是关闭按钮。
+    const canOpenQueueBySlide = !isOpen && Boolean(onOpenQueueAt);
+    // 位置：默认 0 = 原来贴右缘、跟底部基线。水平正值向右（right 取负），垂直叠加在基线上。
+    const panelHandleOffsetXPx = usePlayerChromeSettingsStore(state => state.panelHandleOffsetXPx);
+    const panelHandleOffsetYPx = usePlayerChromeSettingsStore(state => state.panelHandleOffsetYPx);
+    const panelHandleBottomPx = useMotionValue(0);
+    React.useEffect(() => {
+        // 基线本身是 MotionValue（控制栏移动时会变），用 on('change') 持续叠加，别一次性取值。
+        const apply = () => panelHandleBottomPx.set(Math.max(0, bottomBarBottomPx.get() + panelHandleOffsetYPx));
+        apply();
+        return bottomBarBottomPx.on('change', apply);
+    }, [bottomBarBottomPx, panelHandleBottomPx, panelHandleOffsetYPx]);
+    const clearLongPress = React.useCallback(() => {
+        if (longPressTimerRef.current !== null) {
+            window.clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+        }
+        longPressFiredRef.current = false;
+        longPressMovedRef.current = false;
+        setLongPressArmed(false);
+    }, []);
     const isGuideLineVisible = canSlideOpenCommandPalette && (showGuideLine || isPanelGuideHotspotActive);
     const toggleButtonMotionClass = (isOpen || isGuideLineVisible || isDragging)
         ? 'translate-x-0 opacity-100'
@@ -227,7 +268,20 @@ const PanelHandle: React.FC<PanelHandleProps> = ({
         }
     };
     const handleToggleButtonPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
-        if (!canSlideOpenCommandPalette) {
+        // 长按待命独立于左滑开关：即使没配 onOpenCommandPalette，右滑开列表仍然可用。
+        clearLongPress();
+        longPressMovedRef.current = false;
+        if (canOpenQueueBySlide) {
+            longPressTimerRef.current = window.setTimeout(() => {
+                longPressTimerRef.current = null;
+                longPressFiredRef.current = true;
+                // armed 的视觉反馈：按钮完全显示、滑轨展开，提示「现在可以滑了」
+                setLongPressArmed(true);
+                setIsDragging(true);
+            }, PANEL_HANDLE_LONG_PRESS_MS);
+        }
+
+        if (!canSlideOpenCommandPalette && !canOpenQueueBySlide) {
             return;
         }
 
@@ -245,12 +299,32 @@ const PanelHandle: React.FC<PanelHandleProps> = ({
     };
     const handleToggleButtonPointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
         const gesture = commandSlideRef.current;
-        if (!canSlideOpenCommandPalette || !gesture || gesture.triggered) {
+        if (!gesture || gesture.triggered) {
             return;
         }
 
         const deltaX = event.clientX - gesture.startX;
         const deltaY = event.clientY - gesture.startY;
+        // 动过了就算手势：长按之后小幅度拖动再松手，不当作点击（否则会误开关面板）
+        if (Math.abs(deltaX) > PANEL_HANDLE_GESTURE_MOVE_SLOP_PX || Math.abs(deltaY) > PANEL_HANDLE_GESTURE_MOVE_SLOP_PX) {
+            longPressMovedRef.current = true;
+        }
+
+        // 长按成立后向右滑：打开播放列表，在按钮所在位置展开
+        if (shouldOpenQueueFromSlide(deltaX, deltaY, longPressFiredRef.current)) {
+            gesture.triggered = true;
+            suppressToggleClickRef.current = true;
+            clearLongPress();
+            event.preventDefault();
+            resetToggleButtonDragFeedback('release', 0);
+            onOpenQueueAt?.(gesture.startX, gesture.startY);
+            return;
+        }
+
+        if (!canSlideOpenCommandPalette) {
+            return;
+        }
+
         setToggleButtonDragFeedback(deltaX);
         if (deltaX <= -PANEL_SLIDE_TRIGGER_PX && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
             gesture.triggered = true;
@@ -291,6 +365,11 @@ const PanelHandle: React.FC<PanelHandleProps> = ({
     };
     const clearToggleButtonGesture = () => {
         commandSlideRef.current = null;
+        // 长按后动过但没达到阈值：手势失败，松手不再触发开关面板
+        if (longPressFiredRef.current && longPressMovedRef.current) {
+            suppressToggleClickRef.current = true;
+        }
+        clearLongPress();
         resetToggleButtonDragFeedback();
     };
     const handleToggleButtonClick = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -308,6 +387,9 @@ const PanelHandle: React.FC<PanelHandleProps> = ({
         if (guideHideTimeoutRef.current !== null) {
             window.clearTimeout(guideHideTimeoutRef.current);
         }
+        if (longPressTimerRef.current !== null) {
+            window.clearTimeout(longPressTimerRef.current);
+        }
     }, []);
 
     return (
@@ -324,7 +406,7 @@ const PanelHandle: React.FC<PanelHandleProps> = ({
                     data-testid="panel-toggle"
                     ref={layoutRef}
                     onUpdate={invalidateLayout}
-                    style={{ bottom: bottomBarBottomPx }}
+                    style={{ bottom: panelHandleBottomPx, right: -panelHandleOffsetXPx }}
                     className="pointer-events-auto fixed right-0 z-[60] pr-4 md:pr-8 group w-20 flex justify-end"
                     onMouseEnter={handleToggleButtonMouseEnter}
                     onMouseLeave={handleToggleButtonMouseLeave}
@@ -397,7 +479,7 @@ const PanelHandle: React.FC<PanelHandleProps> = ({
                             onClick={handleToggleButtonClick}
                             style={{ touchAction: canSlideOpenCommandPalette ? 'none' : undefined }}
                             className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg backdrop-blur-md transform
-                                border-none absolute right-0 top-0 z-10 ${isOpen ? 'bg-white text-black' : (isDaylight ? 'bg-white/70 text-zinc-900' : 'bg-black/40 text-white')}`}
+                                border-none absolute right-0 top-0 z-10 ${isOpen ? 'bg-white text-black' : (isDaylight ? 'bg-white/70 text-zinc-900' : 'bg-black/40 text-white')}${longPressArmed ? ' ring-2 ring-white/70' : ''}`}
                         >
                             {isOpen ? <X size={20} /> : <Settings2 size={20} />}
                         </button>

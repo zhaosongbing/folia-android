@@ -4,7 +4,7 @@ import { useLocalLibraryAutoScanState } from '../../../../../hooks/useLocalLibra
 import { refreshLocalLibraryAutoScanRoots } from '../../../../../services/localLibraryAutoScan';
 import { useLocalLibrarySettingsStore } from '../../../../../stores/useLocalLibrarySettingsStore';
 import type { LocalLibraryAutoScanRootState } from '../../../../../types/localLibraryWatch';
-import { Button, Group, Reveal, Row, Status, Toggle } from '../../kit';
+import { Button, FoldedGroup, Reveal, Row, Status, Toggle } from '../../kit';
 import { O, WATCH } from './options';
 
 // src/components/modal/settings/pages/storage/FolderWatchGroup.tsx
@@ -53,7 +53,7 @@ export const FolderWatchGroup: React.FC = () => {
                     : t('options.localLibraryWatchNeverScanned');
 
     return (
-        <Group def={WATCH}>
+        <FoldedGroup def={WATCH}>
             <Row option={O.autoScan} hint={t('options.localLibraryAutoScanDesc')}>
                 <Toggle checked={enabled} onChange={setEnabled} />
             </Row>
@@ -75,7 +75,7 @@ export const FolderWatchGroup: React.FC = () => {
                     <Row sub label={<Status tone="error">{autoScan.lastError}</Status>} />
                 </Reveal>
             </Reveal>
-        </Group>
+        </FoldedGroup>
     );
 };
 

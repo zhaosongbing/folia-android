@@ -10,7 +10,7 @@ import {
     type DebugLogMode,
 } from '../../../../services/debug/debugModule';
 import { isConsoleCaptureEnabled, setConsoleCaptureEnabled, subscribeToConsoleLog } from '../../../../utils/consoleLogBuffer';
-import { Button, Group, Keys, Reveal, Row, Segmented, Toggle, option, useSettingsKitTheme, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
+import { Button, FoldedGroup, Keys, Reveal, Row, Segmented, Toggle, option, useSettingsKitTheme, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
 
 // src/components/modal/settings/pages/DeveloperPage.tsx
 // The 开发者 page: the debug module's switches. Two recordings, each with a switch for whether
@@ -49,7 +49,7 @@ const DeveloperPage: React.FC = () => {
     ];
 
     return (
-        <Group def={TOOLS} bare foot={t('options.consoleLogConvention')}>
+        <FoldedGroup def={TOOLS}>
             <Row option={O.sessionLog} hint={t('options.consoleLogCaptureDesc')}>
                 <Keys keys={['Alt', 'Shift', 'D']} />
                 <Toggle checked={capturing} onChange={setConsoleCaptureEnabled} />
@@ -95,7 +95,10 @@ const DeveloperPage: React.FC = () => {
                     />
                 </Row>
             </Reveal>
-        </Group>
+                    <p className="mx-1 mt-2 text-xs leading-[18px] text-[color:var(--st-t3)]">
+                {t('options.consoleLogConvention')}
+            </p>
+</FoldedGroup>
     );
 };
 

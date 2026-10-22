@@ -21,6 +21,8 @@ export type PlayerPanelViewModel = {
 type PlayerPanelAmbient = {
 
     isPanelOpen: boolean;
+    /** 长按入口的展开锚点；null = 面板贴右缘的默认形态。 */
+    playerPanelAnchor: { x: number; y: number } | null;
     coverUrl: string | null;
     isLiked: boolean;
     hasLyrics: boolean;
@@ -88,6 +90,7 @@ export type PlayerPanelDeps = {
     handlePreviewVolume: UnifiedPanelProps['playback']['onVolumePreview'];
     isNowPlayingControlDisabled: boolean;
     openCommandPalette?: UnifiedPanelProps['playback']['onOpenCommandPalette'];
+    openQueueAt?: UnifiedPanelProps['playback']['onOpenQueueAt'];
     isCommandPaletteOpen?: boolean;
     playQueue: UnifiedPanelProps['queue']['playQueue'];
     playSong: UnifiedPanelProps['queue']['onPlaySong'];
@@ -108,6 +111,7 @@ type BuildPlayerPanelModelParams = PlayerPanelAmbient & PlayerPanelDeps;
 // Builds the player panel model from raw app state and actions so App.tsx no longer assembles nested props inline.
 export const buildPlayerPanelModel = ({
     isPanelOpen,
+    playerPanelAnchor,
     navigateToHome,
     navigateToLattice,
     handleDirectHomeFromPanel,
@@ -163,6 +167,7 @@ export const buildPlayerPanelModel = ({
     activePlaybackContext,
     isNowPlayingControlDisabled,
     openCommandPalette,
+    openQueueAt,
     isCommandPaletteOpen,
     playQueue,
     playSong,
@@ -188,6 +193,7 @@ export const buildPlayerPanelModel = ({
     panelProps: {
         playback: {
             isOpen: isPanelOpen,
+            anchor: playerPanelAnchor,
             onTabChange: setPanelTab,
             onToggle: () => setIsPanelOpen(!isPanelOpen),
             onNavigateHome: navigateToHome,
@@ -250,6 +256,7 @@ export const buildPlayerPanelModel = ({
                 openSettings('options');
             },
             onOpenCommandPalette: openCommandPalette,
+            onOpenQueueAt: openQueueAt,
             isCommandPaletteOpen,
         },
         queue: {

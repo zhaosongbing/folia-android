@@ -7,7 +7,7 @@ import { usePlayerChromeSettingsStore } from '../../../../stores/usePlayerChrome
 import { useThemeSettingsStore } from '../../../../stores/useThemeSettingsStore';
 import { useVisualizerSettingsStore } from '../../../../stores/useVisualizerSettingsStore';
 import { VISUALIZER_FRAME_RATE_OPTIONS } from '../../../../utils/frameRateLimiter';
-import { Group, Link, Reveal, Row, Segmented, Toggle, option, useSettingsKitTheme, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
+import { FoldedGroup, Link, Reveal, Row, Segmented, Toggle, option, useSettingsKitTheme, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
 
 // src/components/modal/settings/pages/GraphicsPage.tsx
 // The 性能与动效 page: what trades picture for smoothness or works around a renderer problem
@@ -83,7 +83,7 @@ const GraphicsPage: React.FC = () => {
 
     return (
         <>
-            <Group def={PERFORMANCE}>
+            <FoldedGroup def={PERFORMANCE}>
                 <Row option={O.staticMode} hint={t('options.enableStaticModeDesc')}>
                     <Toggle checked={theme.staticMode} onChange={theme.setStaticMode} />
                 </Row>
@@ -124,9 +124,9 @@ const GraphicsPage: React.FC = () => {
                 >
                     <Toggle checked={visualizer.glowFix} onChange={visualizer.setGlowFix} />
                 </Row>
-            </Group>
+            </FoldedGroup>
 
-            <Group def={MOTION} foot={t('options.reduceMotionSectionDesc')}>
+            <FoldedGroup def={MOTION}>
                 <Row option={O.followSystem} hint={t('options.reduceMotionFollowSystemDesc')}>
                     <Toggle checked={motion.followSystem} onChange={motion.setFollowSystem} />
                 </Row>
@@ -139,7 +139,10 @@ const GraphicsPage: React.FC = () => {
                         <Toggle checked={motion.surfaces[surface]} onChange={enabled => motion.setSurface(surface, enabled)} />
                     </Row>
                 ))}
-            </Group>
+                <p className="mx-1 mt-2 text-xs leading-[18px] text-[color:var(--st-t3)]">
+                    {t('options.reduceMotionSectionDesc')}
+                </p>
+            </FoldedGroup>
 
             <ConfirmDialog
                 isOpen={nativeBlurAsking}

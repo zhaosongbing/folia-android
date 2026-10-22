@@ -16,3 +16,35 @@ export const PANEL_SLIDE_TRACK_BASE_PX = 48;
 
 /** 滑轨完全展开后的宽度，px。 */
 export const PANEL_SLIDE_TRACK_FULL_PX = 96;
+
+/**
+ * 右侧按钮「长按后向右滑打开播放列表」手势。
+ *
+ * 为什么要长按前置：右滑在播放页没有任何既有含义，不设门槛的话，拇指从左往右划过按钮
+ * （比如去拖进度条）就会误开列表。长按 450ms 是一个明确的「我要用手势」的声明，
+ * 和双击手势的避让窗口取同一个量级。
+ */
+export const PANEL_HANDLE_LONG_PRESS_MS = 450;
+
+/** 长按成立后，向右拖够这么远即打开播放列表。阈值与左滑触发阈值取同一个数。 */
+export const PANEL_HANDLE_QUEUE_TRIGGER_PX = PANEL_SLIDE_TRIGGER_PX;
+
+/** 手势位移容差：超过就算「动过了」，此时松手不再当作点击（否则长按后小幅度拖动会误开关面板）。 */
+export const PANEL_HANDLE_GESTURE_MOVE_SLOP_PX = 12;
+
+/**
+ * 这一次移动是否满足「长按已成立 + 向右拖过阈值 + 水平方向占优」。
+ *
+ * 水平占优的判据和左滑那条保持一致（`|dx| > |dy| * 1.2`）：斜着拖不算横向滑动，
+ * 两条手势用同一个判据，才不会出现「往左下拖触发命令面板、往右上拖触发列表」这种割裂感。
+ */
+export const shouldOpenQueueFromSlide = (
+    deltaX: number,
+    deltaY: number,
+    longPressed: boolean,
+): boolean => (
+    longPressed
+    && deltaX >= PANEL_HANDLE_QUEUE_TRIGGER_PX
+    && Math.abs(deltaX) > Math.abs(deltaY) * 1.2
+);
+

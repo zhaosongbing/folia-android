@@ -6,7 +6,7 @@ import { clearAllData } from '../../../../services/db';
 import { openCommandPaletteCommand } from '../../../../stores/useAppViewStore';
 import { useAudioSettingsStore } from '../../../../stores/useAudioSettingsStore';
 import { closeSettings } from '../../../../stores/useSettingsModalStore';
-import { Button, CopyValue, FoldedGroup, Group, Row, Select, Toggle, Value, useSettingsKitTheme, type SettingsOptionDef } from '../kit';
+import { Button, CopyValue, FoldedGroup, Row, Select, Toggle, Value, useSettingsKitTheme, type SettingsOptionDef } from '../kit';
 import { useSettingsPage } from './settingsPageContext';
 import ConfigTransferRows from './storage/ConfigTransferRows';
 import FolderWatchGroup from './storage/FolderWatchGroup';
@@ -44,7 +44,7 @@ const StoragePage: React.FC = () => {
 
     return (
         <>
-            <Group def={MEDIA}>
+            <FoldedGroup def={MEDIA}>
                 <Row option={O.mediaCache} hint={t('options.enableMediaCacheDesc')}>
                     <Toggle checked={mediaCacheEnabled} onChange={setMediaCacheEnabled} />
                 </Row>
@@ -74,16 +74,15 @@ const StoragePage: React.FC = () => {
                 <Row label={t('options.cachedSongsCount')}>
                     <Value>{mediaCount} · {cacheSizes.media}</Value>
                 </Row>
-            </Group>
+            </FoldedGroup>
 
-            <Group
-                def={CACHES}
-                action={(
+            <FoldedGroup def={CACHES}>
+                {/* 「全部清除」原先在标题行右侧，折叠组没有那个位置，改成内容区第一行 */}
+                <Row>
                     <Button variant="quiet" onClick={() => setClearingAll('asking')} disabled={clearingAll === 'running'}>
                         {clearingAll === 'running' ? t('options.cacheClearing') : t('options.clearAll')}
                     </Button>
-                )}
-            >
+                </Row>
                 {CACHE_ROWS.map(({ category, option }) => (
                     <Row key={category} option={option}>
                         <Value>{cacheSizes[category]}</Value>
@@ -105,7 +104,7 @@ const StoragePage: React.FC = () => {
                         </Button>
                     </Row>
                 ))}
-            </Group>
+            </FoldedGroup>
 
             <FolderWatchGroup />
 

@@ -27,6 +27,47 @@ const DOCK_HEIGHT_PX = 36;
 const DOCK_GAP_PX = 12;
 /** Above the open tab: the gap, the hairline, and the gap under it. */
 const BODY_TOP_PX = { gap: 12, line: 1, under: 8 } as const;
+/** The surface's own width, mirrored from the class below: the anchor clamp needs it. */
+const PANEL_WIDTH_PX = 360;
+/** 锚点到面板的距离：像菜单那样偏开手指一点，别让面板边缘贴着落点。 */
+const ANCHOR_GAP_PX = 12;
+/** 贴边时留给屏幕的距离。 */
+const ANCHOR_EDGE_MARGIN_PX = 8;
+
+/**
+ * 锚点模式下面板从哪一侧展开。
+ *
+ * 比较锚点左右的剩余空间：右侧放得下就往右展开（面板左缘 = 锚点 + 间距），
+ * 左侧放得下就往左展开（面板右缘 = 锚点 − 间距），两侧都放不下时贴更宽的那一侧并允许
+ * 被外层 max-w 收敛。这样无论长按点在屏幕哪个位置，面板都朝着宽的一侧打开，
+ * 不会出现「长按在最左边，面板却飞到最右边」。
+ */
+const resolveAnchoredPanelLayout = (
+    anchor: { x: number; y: number },
+): { left: number; align: 'start' | 'end' } => {
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 0;
+    const roomOnRight = viewportWidth - anchor.x;
+    const roomOnLeft = anchor.x;
+    const fitsRight = roomOnRight >= PANEL_WIDTH_PX + ANCHOR_GAP_PX + ANCHOR_EDGE_MARGIN_PX;
+    const fitsLeft = roomOnLeft >= PANEL_WIDTH_PX + ANCHOR_GAP_PX + ANCHOR_EDGE_MARGIN_PX;
+
+    if (fitsRight || (!fitsLeft && roomOnRight >= roomOnLeft)) {
+        const left = anchor.x + ANCHOR_GAP_PX;
+        return {
+            left: Math.max(
+                ANCHOR_EDGE_MARGIN_PX,
+                Math.min(left, Math.max(ANCHOR_EDGE_MARGIN_PX, viewportWidth - PANEL_WIDTH_PX - ANCHOR_EDGE_MARGIN_PX)),
+            ),
+            align: 'start',
+        };
+    }
+
+    const left = anchor.x - ANCHOR_GAP_PX - PANEL_WIDTH_PX;
+    return {
+        left: Math.max(ANCHOR_EDGE_MARGIN_PX, left),
+        align: 'end',
+    };
+};
 
 type PanelShellProps = {
     isOpen: boolean;
@@ -46,6 +87,11 @@ type PanelShellProps = {
     handle: React.ReactNode;
     /** The open tab's body. It may use --pn-tab-room, the height it can take before it scrolls here. */
     children: React.ReactNode;
+    /**
+     * 长按入口的展开锚点（视口坐标）。给了它面板就不再贴右缘，改从长按点附近展开；
+     * 把手、命令面板、快捷键这些入口都不传，保持原来的贴右行为。
+     */
+    anchor?: { x: number; y: number } | null;
 };
 
 type PanelSurfaceProps = Omit<PanelShellProps, 'isOpen' | 'handle'> & {
@@ -55,19 +101,27 @@ type PanelSurfaceProps = Omit<PanelShellProps, 'isOpen' | 'handle'> & {
     onLayoutUpdate: () => void;
 };
 
-const PanelSurface: React.FC<PanelSurfaceProps> = ({ hasHandle, isCover, tabKey, theme, isDaylight, header, dock, children, layoutRef, onLayoutUpdate }) => {
+const PanelSurface: React.FC<PanelSurfaceProps> = ({ hasHandle, isCover, tabKey, theme, isDaylight, header, dock, children, layoutRef, onLayoutUpdate, anchor }) => {
     const reduced = useKitReducedMotion();
     const bottomBarBottomPx = usePlayerBottomBarBottomPx();
     // What is under the surface: the handle, or a small gap. A variable, so the two heights below follow it at once.
     const underPx = hasHandle ? HANDLE_ROOM_PX : BARE_GAP_PX;
+    // 锚点模式下高度从锚点的 top 往下算，而不是从底部基线往上算。
+    const anchoredTopPx = anchor ? Math.max(8, anchor.y) : 0;
+    // 展开原点跟着实际那一侧走：往右展开时从左上角长出，往左展开时从右上角长出。
+    const anchoredLayout = anchor ? resolveAnchoredPanelLayout(anchor) : null;
     // Never taller than the window allows, wherever the bottom bar's baseline has been lifted to.
     const maxHeight = useTransform(
         bottomBarBottomPx,
-        bottom => `calc(100dvh - var(--pn-under) - ${bottom + TOP_MARGIN_PX}px)`,
+        bottom => (anchor
+            ? `calc(100dvh - ${anchoredTopPx}px - 24px)`
+            : `calc(100dvh - var(--pn-under) - ${bottom + TOP_MARGIN_PX}px)`),
     );
     const headerRoom = useTransform(
         bottomBarBottomPx,
-        bottom => `calc(100dvh - var(--pn-under) - ${bottom + TOP_MARGIN_PX + 2 * PADDING_PX + DOCK_GAP_PX + DOCK_HEIGHT_PX}px)`,
+        bottom => (anchor
+            ? `calc(100dvh - ${anchoredTopPx}px - ${2 * PADDING_PX + DOCK_GAP_PX + DOCK_HEIGHT_PX}px)`
+            : `calc(100dvh - var(--pn-under) - ${bottom + TOP_MARGIN_PX + 2 * PADDING_PX + DOCK_GAP_PX + DOCK_HEIGHT_PX}px)`),
     );
     const scrollRef = useRef<HTMLDivElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
@@ -110,8 +164,10 @@ const PanelSurface: React.FC<PanelSurfaceProps> = ({ hasHandle, isCover, tabKey,
                 maxHeight,
                 padding: PADDING_PX,
                 marginBottom: underPx,
-                // The centre of the handle, at the surface's right end.
-                transformOrigin: `calc(100% - 24px) calc(100% + ${underPx - 24}px)`,
+                // The centre of the handle, at the surface's right end. 锚点模式改从落点那一侧长出。
+                transformOrigin: anchoredLayout
+                    ? (anchoredLayout.align === 'end' ? 'calc(100% - 12px) 0' : '12px 0')
+                    : `calc(100% - 24px) calc(100% + ${underPx - 24}px)`,
             } as MotionStyle}
         >
             {header}
@@ -144,20 +200,36 @@ const PanelSurface: React.FC<PanelSurfaceProps> = ({ hasHandle, isCover, tabKey,
     );
 };
 
-const PanelShell: React.FC<PanelShellProps> = ({ isOpen, handle, ...surface }) => {
+const PanelShell: React.FC<PanelShellProps> = ({ isOpen, handle, anchor, ...surface }) => {
     const bottomBarBottomPx = usePlayerBottomBarBottomPx();
     const { ref: layoutRef, invalidate: invalidateLayout } = usePlayerOverlayObstacle('player-panel', 'panel');
+    // 关面板时 App 会立刻清掉 anchor（见 useAppViewStore.setIsPanelOpen），而面板还有一段退场动画。
+    // 这里把「本次打开用的锚点」留到退场结束，否则动画进行中 wrapper 会从长按位置跳回右侧 ——
+    // 就是关列表时在屏幕右边闪一下的那个现象。
+    const [layoutAnchor, setLayoutAnchor] = useState(anchor);
+    useEffect(() => {
+        if (isOpen) setLayoutAnchor(anchor);
+    }, [isOpen, anchor]);
+    const anchorForLayout = isOpen ? anchor : layoutAnchor;
+    const anchored = Boolean(anchorForLayout);
+    // 锚点落在哪一侧展开：比较锚点左右的剩余空间，谁放得下面板就往哪侧展开。
+    // 原来的做法是无条件往右展开再内收，锚点靠近左缘时面板会被压成贴右，看起来「没跟着手指」。
+    const anchoredLayout = anchorForLayout ? resolveAnchoredPanelLayout(anchorForLayout) : null;
 
     return (
         <motion.div
-            style={{ bottom: bottomBarBottomPx }}
+            // 锚点模式：从锚点向宽的那一侧展开（间距 12px，贴边时内收 8px不出屏）。
+            // 非锚点模式保持原来的 bottom 基线。
+            style={anchoredLayout
+                ? { left: anchoredLayout.left, top: Math.max(8, anchorForLayout!.y) }
+                : { bottom: bottomBarBottomPx }}
             onUpdate={invalidateLayout}
-            className="absolute right-0 z-[60] flex flex-col items-end pointer-events-none"
+            className={`absolute z-[60] flex flex-col pointer-events-none ${anchoredLayout ? (anchoredLayout.align === 'end' ? 'items-end' : 'items-start') : 'right-0 items-end'}`}
             onClick={(e) => e.stopPropagation()}
         >
-            <div className="pr-4 md:pr-8">
+            <div className={anchoredLayout ? (anchoredLayout.align === 'end' ? 'pr-4 md:pr-8' : '') : 'pr-4 md:pr-8'}>
                 <AnimatePresence>
-                    {isOpen && <PanelSurface {...surface} layoutRef={layoutRef} onLayoutUpdate={invalidateLayout} />}
+                    {isOpen && <PanelSurface {...surface} anchor={anchorForLayout} layoutRef={layoutRef} onLayoutUpdate={invalidateLayout} />}
                 </AnimatePresence>
             </div>
 

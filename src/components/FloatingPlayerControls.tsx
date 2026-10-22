@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Play, Pause } from 'lucide-react';
+import { Crosshair, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 import { MotionValue } from 'framer-motion';
 import ProgressBar from './ProgressBar';
 import { PlayerState, LyricData, Theme } from '../types';
@@ -12,7 +12,13 @@ import PlayerBottomBarPositioner from './floating-player/PlayerBottomBarPosition
 import { usePlayerBottomBarBottomPx } from '../hooks/usePlayerBottomBarBottomPx';
 import { playerBottomBarLiveOffset } from '../stores/motionSignals';
 import { usePlayerBottomBarLayoutStore } from '../stores/usePlayerBottomBarLayoutStore';
+import { selectDisplayPlayerState, usePlaybackStore } from '../stores/usePlaybackStore';
 import { usePlayerChromeSettingsStore } from '../stores/usePlayerChromeSettingsStore';
+import {
+    PLAYER_BAR_HEIGHT_MAX,
+    PLAYER_BAR_RADIUS_MAX,
+    PLAYER_BAR_WIDTH_MAX,
+} from '../stores/usePlayerChromeSettingsStore';
 import { PLAYER_BOTTOM_BAR_BASE_OFFSET_PX, clampPlayerBottomBarOffset, resolvePlayerBottomBarMaxOffset } from '../utils/playerBottomBarLayout';
 import type { PlayerControlSlotActionId, PlayerControlSlotContext } from './floating-player/playerControlSlotActions';
 import { usePlayerOverlayObstacle } from '../hooks/usePlayerOverlayLayout';
@@ -24,6 +30,12 @@ export interface TrackNavigation {
     onNext: () => void;
     canPrev: boolean;
     canNext: boolean;
+    /**
+     * 队列里当前曲目前面**确实还有一首**（不含循环绕回）。
+     * canPrev 在列表循环模式下对第一首也返回 true（上一首是最后一首），
+     * 但用户明确要求「第一首不显示上一首」，所以按钮显隐看这个字段。
+     */
+    hasPrevInQueue?: boolean;
     prevTitle: string | null;
     nextTitle: string | null;
     prevLabel: string;
@@ -80,6 +92,8 @@ interface FloatingPlayerControlsProps {
     hideControlBar?: boolean;
     controlsDisabled?: boolean;
     trackNavigation?: TrackNavigation | null;
+    /** 定位当前播放歌曲（放到控制栏按钮组里）；不传就不显示那颗准星 */
+    onLocatePlaying?: () => void;
     /** 右侧两个可自定义槽位的动作 id。 */
     slotPrimary: PlayerControlSlotActionId;
     slotSecondary: PlayerControlSlotActionId;
@@ -115,6 +129,7 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
     hideControlBar = false,
     controlsDisabled = false,
     trackNavigation = null,
+    onLocatePlaying,
     slotPrimary,
     slotSecondary,
     slotContext,
@@ -150,9 +165,18 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
             : resolvePlayerBottomBarMaxOffset(window.innerHeight)
     ));
 
+    const playerBarClickToExpand = usePlayerChromeSettingsStore(state => state.playerBarClickToExpand);
     const canAutoExpand = canTogglePlay && duration > 0;
     // 定位模式强制展开：用户要看到的是最终形态的胶囊，而不是一条细进度条。
-    const showExpanded = isPositioning || isHovered || (canAutoExpand && playerState !== PlayerState.PLAYING && currentView !== 'home');
+    // 点击展开模式：点一下胶囊展开，再点它或点空白处收起（见下面的 handleClick 与外部监听）。
+    const [isClickExpanded, setIsClickExpanded] = React.useState(false);
+    // 暂停时自动展开（原来的默认行为）。
+    const autoExpanded = canAutoExpand && playerState !== PlayerState.PLAYING && currentView !== 'home';
+    // 点击展开模式下，展开与否**只**由点击决定。
+    // 之前这里是「isClickExpanded || 自动展开」，结果暂停时 autoExpanded 恒为真，
+    // 点一下想收起也收不起来 —— 必须让这个模式下 hover 和自动展开都失效。
+    const showExpanded = isPositioning
+        || (playerBarClickToExpand ? isClickExpanded : (isHovered || autoExpanded));
 
     // 上限依赖视口高度，窗口变矮时要跟着收，否则虚线框会画到屏幕外。
     useEffect(() => {
@@ -245,6 +269,19 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
     // 读的是已保存值而不是拖动中的 MotionValue：这个数要参与 padding/margin 的布局计算，
     // 跟着每帧变就得每帧 setState。拖动过程中 hover 展开本来也不起作用，落定后自然就对了。
     const savedBottomBarOffset = usePlayerChromeSettingsStore(state => state.playerBottomBarOffset);
+    // 控制栏尺寸：三项默认 0 = 跟随原来的自适应行为（外层 max-w + w-full、内容撑开高度、rounded-full），
+    // 所以没动过设置的用户看到的控制栏和加这项之前一模一样。
+    const playerBarWidthPx = usePlayerChromeSettingsStore(state => state.playerBarWidthPx);
+    const playerBarHeightPx = usePlayerChromeSettingsStore(state => state.playerBarHeightPx);
+    const playerBarRadiusPx = usePlayerChromeSettingsStore(state => state.playerBarRadiusPx);
+    const showExpandedTrackSwitchButtons = usePlayerChromeSettingsStore(state => state.showExpandedTrackSwitchButtons);
+    const playerBarSizeStyle = useMemo<React.CSSProperties>(() => ({
+        // 宽度用 min(Npx, 100%)：外层容器有 max-w 兜底，写死 px 会在窄屏上溢出。
+        ...(playerBarWidthPx > 0 ? { width: `min(${playerBarWidthPx}px, 100%)` } : {}),
+        // 高度只做下限：内容（播放按钮、进度条）比它高时仍按内容走，不会把控件压扁。
+        ...(playerBarHeightPx > 0 ? { minHeight: `${playerBarHeightPx}px` } : {}),
+        ...(playerBarRadiusPx > 0 ? { borderRadius: `${playerBarRadiusPx}px` } : {}),
+    }), [playerBarWidthPx, playerBarHeightPx, playerBarRadiusPx]);
     const hoverHitboxBufferPx = Math.max(
         0,
         Math.round(HOVER_HITBOX_BOTTOM_BUFFER_PX - (savedBottomBarOffset - PLAYER_BOTTOM_BAR_BASE_OFFSET_PX)),
@@ -310,12 +347,52 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
         if (isPositioning) {
             return;
         }
+        // 点击展开模式下的分工：
+        // - 未展开：点一下展开；
+        // - 已展开 + 主页：进播放页（主页的控制栏就是回播放页的入口）；
+        // - 已展开 + 播放页：收起；
+        // - 未展开：先展开（主页的控制栏平时只是一条细进度条，直接跳走看不到歌名）。
+        if (playerBarClickToExpand) {
+            if (!isClickExpanded) {
+                setIsClickExpanded(true);
+                return;
+            }
+            // 已展开时按视图分工：主页是「进播放页」的入口，其余视图是收起。
+            if (currentView === 'home') {
+                onNavigateToPlayer();
+                return;
+            }
+            if (currentView === 'lattice') {
+                onFocusLatticeCurrentSong?.();
+                return;
+            }
+            setIsClickExpanded(false);
+            return;
+        }
         if (currentView !== 'lattice') {
             onNavigateToPlayer();
         } else {
             onFocusLatticeCurrentSong?.();
         }
     };
+
+    // 点胶囊以外的地方收起。用 capture 阶段的 pointerdown：胶囊内部按钮的 onClick 大多
+    // stopPropagation，等到 click 冒泡就太晚了；捕获阶段能保证先判一次「这在不在胶囊里」。
+    React.useEffect(() => {
+        if (!playerBarClickToExpand) {
+            setIsClickExpanded(false);
+            return;
+        }
+        const handleOutsidePointerDown = (event: PointerEvent) => {
+            const target = event.target;
+            if (target instanceof Element && target.closest('[data-ponder="player-bar"]')) {
+                return;
+            }
+            setIsClickExpanded(false);
+        };
+        document.addEventListener('pointerdown', handleOutsidePointerDown, true);
+        return () => document.removeEventListener('pointerdown', handleOutsidePointerDown, true);
+    }, [playerBarClickToExpand]);
 
     if (hideControlBar) {
         return null;
@@ -377,7 +454,7 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                         onPointerMove={handlePositionDragMove}
                         onPointerUp={handlePositionDragEnd}
                         onPointerCancel={handlePositionDragEnd}
-                        style={{ touchAction: isPositioning ? 'none' : undefined }}
+                        style={{ touchAction: isPositioning ? 'none' : undefined, ...playerBarSizeStyle }}
                         className={`backdrop-blur-xl shadow-2xl overflow-hidden rounded-full relative transition-colors duration-300
                             ${isPositioning ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}
                             ${showExpanded ? `p-3 ${glassBgExpanded} w-full` : `px-4 py-2 ${glassBgCollapsed} ${COLLAPSED_WIDTH_CLASS}`}`}
@@ -408,6 +485,8 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                                     slotPrimary={slotPrimary}
                                     slotSecondary={slotSecondary}
                                     slotContext={resolvedSlotContext}
+                                    showTrackSwitchButtons={showExpandedTrackSwitchButtons}
+                                    onLocatePlaying={onLocatePlaying}
                                 />
                             ) : (
                                 <CollapsedView
@@ -480,6 +559,10 @@ interface ExpandedViewProps {
     slotPrimary: PlayerControlSlotActionId;
     slotSecondary: PlayerControlSlotActionId;
     slotContext: PlayerControlSlotContext;
+    /** 展开态在播放/暂停按钮两侧显示上一首/下一首 */
+    showTrackSwitchButtons?: boolean;
+    /** 定位当前播放歌曲；不传就不画那颗准星 */
+    onLocatePlaying?: () => void;
 }
 
 const ExpandedView: React.FC<ExpandedViewProps> = ({
@@ -501,7 +584,20 @@ const ExpandedView: React.FC<ExpandedViewProps> = ({
     slotPrimary,
     slotSecondary,
     slotContext,
+    showTrackSwitchButtons = false,
+    onLocatePlaying,
 }) => {
+    const { t } = useTranslation();
+    const locateText = t('playlist.locatePlaying');
+    // 播放按钮的图标用「对外展示」状态，与双击落点反馈同源；props 的 playerState
+    // 只留给自动展开这类内部逻辑。
+    const displayPlayerState = usePlaybackStore(selectDisplayPlayerState);
+    // 第一首（队列里前面没有歌）时不显示为「不可点」而不是隐藏：列表循环模式下
+    // canPrev 对第一首也返回 true（上一首绕回最后一首），所以要看 hasPrevInQueue。
+    const prevDisabled = controlsDisabled
+        || !trackNavigation?.canPrev
+        || trackNavigation?.hasPrevInQueue === false;
+
     return (
         <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center gap-x-4 gap-y-2 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
             {/* Desktop Layout - responsive grid positions apply from the sm breakpoint */}
@@ -531,22 +627,73 @@ const ExpandedView: React.FC<ExpandedViewProps> = ({
                 )}
             </div>
 
-            {/* Row 3: Loop Button, Play Button, Lyrics Button */}
-            <button
-                onClick={(e) => {
-                    e.stopPropagation();
-                    onTogglePlay();
-                }}
-                disabled={!canTogglePlay || controlsDisabled}
-                className={`col-start-2 row-start-2 flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-none bg-(--text-primary) text-black shadow-lg transition-transform sm:col-start-1 sm:row-start-1 sm:row-span-2 ${controlsDisabled ? 'cursor-not-allowed opacity-45' : 'hover:scale-105'}`}
-                style={{ backgroundColor: primaryColor, color: 'var(--bg-color)' }}
-            >
-                {playerState === PlayerState.PLAYING ? (
-                    <Pause size={20} fill="currentColor" />
-                ) : (
-                    <Play size={20} fill="currentColor" className="ml-1" />
+            {/* Row 3: 上一首、播放/暂停、下一首。三个按钮包在一个 flex 里、沿用播放按钮原来的
+                grid 定位，所以桌面端仍在第一列纵跨两行、移动端仍在第二行居中，布局不受影响。 */}
+            <div className="col-start-2 row-start-2 flex items-center gap-1 sm:col-start-1 sm:row-start-1 sm:row-span-2">
+                {/* 上一首**常显**：第一首时按钮还在，只是变灰不可点。
+                    这样按钮的位置不会随播放位置跳来跳去（原来第一首直接不渲染，
+                    播放按钮会左右移动），也让人知道「这里有个上一首，只是现在没有」。 */}
+                {showTrackSwitchButtons && trackNavigation && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            trackNavigation.onPrev();
+                        }}
+                        disabled={prevDisabled}
+                        aria-label={trackNavigation.prevLabel}
+                        title={trackNavigation.prevLabel}
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-none bg-transparent shadow-none transition-transform ${prevDisabled ? 'cursor-not-allowed opacity-30' : 'hover:scale-105 opacity-70 hover:opacity-100'}`}
+                        style={{ color: primaryColor }}
+                    >
+                        <SkipBack size={18} fill="currentColor" />
+                    </button>
                 )}
-            </button>
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onTogglePlay();
+                    }}
+                    disabled={!canTogglePlay || controlsDisabled}
+                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-none bg-(--text-primary) text-black shadow-lg transition-transform ${controlsDisabled ? 'cursor-not-allowed opacity-45' : 'hover:scale-105'}`}
+                    style={{ backgroundColor: primaryColor, color: 'var(--bg-color)' }}
+                >
+                    {displayPlayerState === PlayerState.PLAYING ? (
+                        <Pause size={20} fill="currentColor" />
+                    ) : (
+                        <Play size={20} fill="currentColor" className="ml-1" />
+                    )}
+                </button>
+                {showTrackSwitchButtons && trackNavigation?.canNext && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            trackNavigation.onNext();
+                        }}
+                        disabled={controlsDisabled}
+                        aria-label={trackNavigation.nextLabel}
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-none bg-transparent shadow-none transition-transform ${controlsDisabled ? 'cursor-not-allowed opacity-45' : 'hover:scale-105 opacity-70 hover:opacity-100'}`}
+                        style={{ color: primaryColor }}
+                    >
+                        <SkipForward size={18} fill="currentColor" />
+                    </button>
+                )}
+                {/* 定位当前播放歌曲：放在控制栏按钮组里，和切歌按钮同一行，不用去墙上找那颗准星 */}
+                {onLocatePlaying && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onLocatePlaying();
+                        }}
+                        disabled={controlsDisabled}
+                        aria-label={locateText}
+                        title={locateText}
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-none bg-transparent shadow-none transition-transform ${controlsDisabled ? 'cursor-not-allowed opacity-45' : 'hover:scale-105 opacity-70 hover:opacity-100'}`}
+                        style={{ color: primaryColor }}
+                    >
+                        <Crosshair size={17} />
+                    </button>
+                )}
+            </div>
 
             {/* 两个可自定义槽位。默认仍是循环模式 + 歌词时间轴，和改动前一致。 */}
             <div

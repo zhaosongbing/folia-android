@@ -10,6 +10,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# 构建时用 mv 留下的旧产物备份（dist-old-fix7、dist-old-721 等），不进版本库
+dist-old-*/
 *.local
 
 # Editor directories and files

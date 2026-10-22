@@ -7,7 +7,7 @@ import { PRIMARY_MODIFIER_LABEL } from '../../../../utils/platform';
 import { openDiscordInvite } from '../../../shared/discordCommunity';
 import { QQ_COMMUNITY_GROUP_NUMBER } from '../../../shared/qqCommunity';
 import { HELP_TAB_PLAYER_CONTROLS, HELP_TAB_PRIMARY_SHORTCUTS } from '../../userGuideContent';
-import { Button, CopyButton, CopyValue, Group, Keys, Row, type SettingsGroupDef } from '../kit';
+import { Button, CopyButton, CopyValue, FoldedGroup, Keys, Row, type SettingsGroupDef } from '../kit';
 import { openOutsideLink } from '../../../../utils/system/outsideLink';
 import { iconLabel } from './iconLabel';
 
@@ -119,7 +119,7 @@ const HelpPage: React.FC<HelpPageProps> = ({ onOpenReleaseNotes, onOpenAiHelp, o
                 cells then sit as far under the cards above as any group does. */}
             <div className={`${COLUMNS_CLASS} mt-2 gap-y-2`}>
                 <div>
-                    <Group def={PLAYER_KEYS}>
+                    <FoldedGroup def={PLAYER_KEYS}>
                         {HELP_TAB_PLAYER_CONTROLS.map(control => (
                             <KeyRow
                                 key={control.id}
@@ -128,18 +128,18 @@ const HelpPage: React.FC<HelpPageProps> = ({ onOpenReleaseNotes, onOpenAiHelp, o
                                 keys={control.keys}
                             />
                         ))}
-                    </Group>
+                    </FoldedGroup>
                 </div>
             </div>
 
-            <Group def={SUPPORT} bare>
+            <FoldedGroup def={SUPPORT}>
                 <Row label={iconLabel(CircleHelp, t('aiHelp.openButton'))} onClick={onOpenAiHelp} />
                 <Row label={iconLabel(MessageCircle, t('help.joinDiscord'))} onClick={openDiscordInvite} />
                 {/* A QQ group has no link that opens it: the row gives its number to copy. */}
                 <Row label={iconLabel(Users, t('help.communityQq'))}>
                     <CopyValue value={QQ_COMMUNITY_GROUP_NUMBER} />
                 </Row>
-            </Group>
+            </FoldedGroup>
 
         </>
     );

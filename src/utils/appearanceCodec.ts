@@ -579,6 +579,9 @@ export const compressConfig = (config: any): string => {
     if (config.stageTrackPillMode !== undefined) minified.stp = config.stageTrackPillMode;
     if (config.stageTrackPillTimeoutSec !== undefined) minified.stpt = config.stageTrackPillTimeoutSec;
     if (config.stageTrackPillOnHome !== undefined) minified.stph = config.stageTrackPillOnHome;
+    if (config.stageTrackPillHeightPx !== undefined) minified.stpph = config.stageTrackPillHeightPx;
+    if (config.stageTrackPillOffsetXPx !== undefined) minified.stpox = config.stageTrackPillOffsetXPx;
+    if (config.stageTrackPillOffsetYPx !== undefined) minified.stpoy = config.stageTrackPillOffsetYPx;
     if (config.libraryWallStackEdges !== undefined) minified.lwse = config.libraryWallStackEdges;
     if (config.libraryWallSeamClear !== undefined) minified.lwsc = config.libraryWallSeamClear;
     if (config.libraryWallSeamStyle !== undefined) minified.lwss = config.libraryWallSeamStyle;
@@ -720,6 +723,9 @@ export const decompressConfig = (str: string): any => {
         if (parsed.stp !== undefined) decompressed.stageTrackPillMode = parsed.stp;
         if (parsed.stpt !== undefined) decompressed.stageTrackPillTimeoutSec = parsed.stpt;
         if (parsed.stph !== undefined) decompressed.stageTrackPillOnHome = parsed.stph;
+        if (parsed.stpph !== undefined) decompressed.stageTrackPillHeightPx = parsed.stpph;
+        if (parsed.stpox !== undefined) decompressed.stageTrackPillOffsetXPx = parsed.stpox;
+        if (parsed.stpoy !== undefined) decompressed.stageTrackPillOffsetYPx = parsed.stpoy;
         if (parsed.lwse !== undefined) decompressed.libraryWallStackEdges = parsed.lwse;
         if (parsed.lwsc !== undefined) decompressed.libraryWallSeamClear = parsed.lwsc;
         if (parsed.lwss !== undefined) decompressed.libraryWallSeamStyle = parsed.lwss;
@@ -744,7 +750,8 @@ export const decompressConfig = (str: string): any => {
             'pendoloTuning', 'sonnetTuning', 'smartBeat', 'temperaTuning', 'lumiereTuning', 'foliumParams',
             'urlBackgroundList', 'urlBackgroundSelectedId',
             'songThemeAutoSwitchEnabled', 'songThemeAutoGenerateEnabled', 'themeGenerationSource', 'followSystemTheme',
-            'stageTrackPillMode', 'stageTrackPillTimeoutSec', 'stageTrackPillOnHome',
+            'stageTrackPillMode', 'stageTrackPillTimeoutSec', 'stageTrackPillOnHome', 'stageTrackPillHeightPx',
+            'stageTrackPillOffsetXPx', 'stageTrackPillOffsetYPx',
             'libraryWallStackEdges',
             'libraryWallSeamClear', 'libraryWallSeamStyle', 'libraryWallBackdropLyrics', 'libraryWallBackdropBlur',
         ];

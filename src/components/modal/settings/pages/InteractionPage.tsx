@@ -7,7 +7,7 @@ import { CUSTOM_SHORTCUT_LETTERS, isCustomShortcutLetterAvailable, isScopeIndepe
 import { useInteractionSettingsStore } from '../../../../stores/useInteractionSettingsStore';
 import { useSettingsModalStore } from '../../../../stores/useSettingsModalStore';
 import { PRIMARY_MODIFIER_LABEL } from '../../../../utils/platform';
-import { Group, KeyCapture, Row, Segmented, Select, Toggle, Value, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
+import { FoldedGroup, KeyCapture, Row, Segmented, Select, Toggle, Value, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
 
 // src/components/modal/settings/pages/InteractionPage.tsx
 // The 快捷操作 page: how a person reaches a command quickly. First the command palette: the three
@@ -66,7 +66,7 @@ const InteractionPage: React.FC = () => {
 
     return (
         <>
-            <Group def={PALETTE}>
+            <FoldedGroup def={PALETTE}>
                 <Row option={O.pinned} hint={t('options.pinnedCommandsDesc')}>
                     {pinnedCommandIds.map((commandId, slot) => (
                         <Select
@@ -97,9 +97,9 @@ const InteractionPage: React.FC = () => {
                         onChange={value => interaction.setShortcutCommandId(value || null)}
                     />
                 </Row>
-            </Group>
+            </FoldedGroup>
 
-            <Group def={GRIDS}>
+            <FoldedGroup def={GRIDS}>
                 <Row
                     option={O.slideTarget}
                     hint={interaction.slideTarget === 'filter'
@@ -119,7 +119,7 @@ const InteractionPage: React.FC = () => {
                 <Row option={O.paletteHotkey} hint={t('options.gridPaletteHotkeyDesc')}>
                     <Toggle checked={interaction.paletteHotkey} onChange={interaction.setPaletteHotkey} />
                 </Row>
-            </Group>
+            </FoldedGroup>
         </>
     );
 };

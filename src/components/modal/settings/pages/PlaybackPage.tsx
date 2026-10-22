@@ -10,7 +10,7 @@ import { useAudioSettingsStore } from '../../../../stores/useAudioSettingsStore'
 import { useAutomixSettingsStore } from '../../../../stores/useAutomixSettingsStore';
 import { useDesktopSettingsStore } from '../../../../stores/useDesktopSettingsStore';
 import { runsOnWindows } from '../../../../utils/platform';
-import { Button, Chips, Group, Reveal, Row, Segmented, Slider, Status, Toggle, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
+import { Button, Chips, FoldedGroup, Reveal, Row, Segmented, Slider, Status, Toggle, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
 import AudioOutputDeviceRow from './AudioOutputDeviceRow';
 import { useSettingsPage } from './settingsPageContext';
 
@@ -111,7 +111,7 @@ const PlaybackPage: React.FC = () => {
 
     return (
         <>
-            <Group def={TRANSITION}>
+            <FoldedGroup def={TRANSITION}>
                 <Row option={O.transition}>
                     <Toggle checked={automix.enabled} onChange={automix.setEnabled} />
                 </Row>
@@ -186,9 +186,9 @@ const PlaybackPage: React.FC = () => {
                         </Row>
                     </Reveal>
                 </Reveal>
-            </Group>
+            </FoldedGroup>
 
-            <Group def={SOUND}>
+            <FoldedGroup def={SOUND}>
                 <AudioOutputDeviceRow option={O.outputDevice} onDeviceChange={onAudioOutputDeviceChange} />
                 <Row option={O.replayGain} note={t('options.replayGainModeDesc')}>
                     <Segmented
@@ -209,9 +209,9 @@ const PlaybackPage: React.FC = () => {
                         <Toggle checked={audio.transcode} onChange={audio.setTranscode} />
                     </Row>
                 )}
-            </Group>
+            </FoldedGroup>
 
-            <Group def={BEHAVIOR}>
+            <FoldedGroup def={BEHAVIOR}>
                 <Row option={O.queueBehavior}>
                     <Segmented
                         value={audio.queueBehavior}
@@ -235,7 +235,7 @@ const PlaybackPage: React.FC = () => {
                         <Toggle checked={voiceInputPause.enabled} onChange={voiceInputPause.onToggle} />
                     </Row>
                 )}
-            </Group>
+            </FoldedGroup>
         </>
     );
 };

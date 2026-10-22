@@ -10,13 +10,30 @@ import { useLatticeSettingsStore } from '../../../../stores/useLatticeSettingsSt
 import { usePlaybackEntryViewStore } from '../../../../stores/usePlaybackEntryViewStore';
 import { usePlaybackStore } from '../../../../stores/usePlaybackStore';
 import { usePlayerBottomBarLayoutStore } from '../../../../stores/usePlayerBottomBarLayoutStore';
-import { usePlayerChromeSettingsStore } from '../../../../stores/usePlayerChromeSettingsStore';
 import { setStatusMessage } from '../../../../stores/useStatusMessageStore';
-import { useStageSettingsStore } from '../../../../stores/useStageSettingsStore';
+import {
+    useStageSettingsStore,
+    STAGE_TRACK_PILL_HEIGHT_MAX,
+    STAGE_TRACK_PILL_HEIGHT_MIN,
+    STAGE_TRACK_PILL_OFFSET_X_MAX,
+    STAGE_TRACK_PILL_OFFSET_X_MIN,
+    STAGE_TRACK_PILL_OFFSET_Y_MAX,
+    STAGE_TRACK_PILL_OFFSET_Y_MIN,
+} from '../../../../stores/useStageSettingsStore';
+import {
+    usePlayerChromeSettingsStore,
+    PANEL_HANDLE_OFFSET_X_MAX,
+    PANEL_HANDLE_OFFSET_X_MIN,
+    PANEL_HANDLE_OFFSET_Y_MAX,
+    PANEL_HANDLE_OFFSET_Y_MIN,
+    PLAYER_BAR_HEIGHT_MAX,
+    PLAYER_BAR_RADIUS_MAX,
+    PLAYER_BAR_WIDTH_MAX,
+} from '../../../../stores/usePlayerChromeSettingsStore';
 import { useTypographySettingsStore } from '../../../../stores/useTypographySettingsStore';
 import { ensureVideoLayerFileRestored, useVideoLayerSettingsStore, VIDEO_LAYER_OPACITY_BOUNDS } from '../../../../stores/useVideoLayerSettingsStore';
 import { PLAYER_BOTTOM_BAR_BASE_OFFSET_PX, resolvePlayerBottomBarMaxOffset } from '../../../../utils/playerBottomBarLayout';
-import { Button, FoldedGroup, Group, PictureChoice, Reveal, Row, Segmented, Select, Slider, TextField, Toggle, Value, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
+import { Button, FoldedGroup, PictureChoice, Reveal, Row, Segmented, Select, Slider, TextField, Toggle, Value, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
 import { EntryViewPicture } from './pictures';
 
 // src/components/modal/settings/pages/PlayerPage.tsx
@@ -45,6 +62,9 @@ const O = {
     controlSlots: option(BAR, 'playerControlSlots', 'options.playerControlSlots'),
     cardMode: option(CARD, 'stageTrackPillMode', 'options.stageTrackPillMode'),
     cardTimeout: option(CARD, 'stageTrackPillTimeout', 'options.stageTrackPillTimeout'),
+    cardHeight: option(CARD, 'stageTrackPillHeight', 'options.stageTrackPillHeight'),
+    cardOffsetX: option(CARD, 'stageTrackPillOffsetX', 'options.stageTrackPillOffsetX'),
+    cardOffsetY: option(CARD, 'stageTrackPillOffsetY', 'options.stageTrackPillOffsetY'),
     cardOnHome: option(CARD, 'stageTrackPillOnHome', 'options.stageTrackPillOnHome'),
     cardCloseButton: option(CARD, 'showOpenPanelCloseButton', 'options.showOpenPanelCloseButton'),
     videoEnabled: option(VIDEO, 'videoLayerEnabled', 'options.videoLayerEnabled'),
@@ -57,6 +77,16 @@ const O = {
     hidePanelButton: option(PLAYER_UI, 'hidePlayerRightPanelButton', 'options.hidePlayerRightPanelButton'),
     alwaysBackButton: option(PLAYER_UI, 'alwaysShowPlayerBackButton', 'options.alwaysShowPlayerBackButton'),
     alwaysTrackSwitch: option(PLAYER_UI, 'alwaysShowTrackSwitchButtons', 'options.alwaysShowTrackSwitchButtons'),
+    doubleTapGesture: option(PLAYER_UI, 'enablePlayerDoubleTapGesture', 'options.playerDoubleTapGesture'),
+    longPressQueue: option(PLAYER_UI, 'enablePlayerLongPressQueue', 'options.playerLongPressQueue'),
+    panelHandleOffsetX: option(PLAYER_UI, 'panelHandleOffsetX', 'options.panelHandleOffsetX'),
+    panelHandleOffsetY: option(PLAYER_UI, 'panelHandleOffsetY', 'options.panelHandleOffsetY'),
+    expandedTrackSwitch: option(PLAYER_UI, 'showExpandedTrackSwitchButtons', 'options.showExpandedTrackSwitchButtons'),
+    barWidth: option(PLAYER_UI, 'playerBarWidth', 'options.playerBarWidth'),
+    barHeight: option(PLAYER_UI, 'playerBarHeight', 'options.playerBarHeight'),
+    barRadius: option(PLAYER_UI, 'playerBarRadius', 'options.playerBarRadius'),
+    titleTrackArrows: option(PLAYER_UI, 'showTitleTrackArrows', 'options.showTitleTrackArrows'),
+    barClickToExpand: option(PLAYER_UI, 'playerBarClickToExpand', 'options.playerBarClickToExpand'),
 };
 
 export const OPTIONS: SettingsOptionDef[] = Object.values(O);
@@ -92,6 +122,16 @@ const PlayerPage: React.FC = () => {
         hidePanelButton: state.hidePlayerRightPanelButton,
         alwaysBackButton: state.alwaysShowPlayerBackButton,
         alwaysTrackSwitch: state.alwaysShowTrackSwitchButtons,
+        doubleTapGesture: state.enablePlayerDoubleTapGesture,
+        longPressQueue: state.enablePlayerLongPressQueue,
+        panelHandleOffsetX: state.panelHandleOffsetXPx,
+        panelHandleOffsetY: state.panelHandleOffsetYPx,
+        expandedTrackSwitch: state.showExpandedTrackSwitchButtons,
+        barWidth: state.playerBarWidthPx,
+        barHeight: state.playerBarHeightPx,
+        barRadius: state.playerBarRadiusPx,
+        titleTrackArrows: state.showTitleTrackArrows,
+        barClickToExpand: state.playerBarClickToExpand,
         cardCloseButton: state.showOpenPanelCloseButton,
         setAutoHide: state.handleToggleAutoHidePlayerChrome,
         setAutoHideCursor: state.handleToggleAutoHideCursorWithPlayerChrome,
@@ -102,14 +142,30 @@ const PlayerPage: React.FC = () => {
         setHidePanelButton: state.handleToggleHidePlayerRightPanelButton,
         setAlwaysBackButton: state.handleToggleAlwaysShowPlayerBackButton,
         setAlwaysTrackSwitch: state.handleToggleAlwaysShowTrackSwitchButtons,
+        setDoubleTapGesture: state.handleTogglePlayerDoubleTapGesture,
+        setLongPressQueue: state.handleTogglePlayerLongPressQueue,
+        setPanelHandleOffsetX: state.handleSetPanelHandleOffsetXPx,
+        setPanelHandleOffsetY: state.handleSetPanelHandleOffsetYPx,
+        setExpandedTrackSwitch: state.handleToggleExpandedTrackSwitchButtons,
+        setBarWidth: state.handleSetPlayerBarWidthPx,
+        setBarHeight: state.handleSetPlayerBarHeightPx,
+        setBarRadius: state.handleSetPlayerBarRadiusPx,
+        setTitleTrackArrows: state.handleToggleTitleTrackArrows,
+        setBarClickToExpand: state.handleTogglePlayerBarClickToExpand,
         setCardCloseButton: state.handleToggleOpenPanelCloseButton,
     })));
     const card = useStageSettingsStore(useShallow(state => ({
         mode: state.stageTrackPillMode,
         timeoutSec: state.stageTrackPillTimeoutSec,
+        heightPx: state.stageTrackPillHeightPx,
+        offsetXPx: state.stageTrackPillOffsetXPx,
+        offsetYPx: state.stageTrackPillOffsetYPx,
         onHome: state.stageTrackPillOnHome,
         setMode: state.handleSetStageTrackPillMode,
         setTimeoutSec: state.handleSetStageTrackPillTimeoutSec,
+        setHeightPx: state.handleSetStageTrackPillHeightPx,
+        setOffsetXPx: state.handleSetStageTrackPillOffsetXPx,
+        setOffsetYPx: state.handleSetStageTrackPillOffsetYPx,
         setOnHome: state.handleToggleStageTrackPillOnHome,
     })));
     const video = useVideoLayerSettingsStore(useShallow(state => ({
@@ -173,7 +229,7 @@ const PlayerPage: React.FC = () => {
 
     return (
         <>
-            <Group def={VIEW}>
+            <FoldedGroup def={VIEW}>
                 <Row option={O.entryView} hint={t('options.playbackEntryViewDesc')}>
                     <PictureChoice
                         value={playbackEntryView}
@@ -212,9 +268,9 @@ const PlayerPage: React.FC = () => {
                         <Slider value={lattice.tintIntensity} min={0} max={1} step={0.01} onChange={lattice.setTintIntensity} format={percent} />
                     </Row>
                 </Reveal>
-            </Group>
+            </FoldedGroup>
 
-            <Group def={BAR}>
+            <FoldedGroup def={BAR}>
                 <Row option={O.autoHide} note={t('options.autoHidePlayerChromeDesc')}>
                     <Toggle checked={chrome.autoHide} onChange={chrome.setAutoHide} />
                 </Row>
@@ -261,9 +317,9 @@ const PlayerPage: React.FC = () => {
                         onChange={next => chrome.setSlot('secondary', next)}
                     />
                 </Row>
-            </Group>
+            </FoldedGroup>
 
-            <Group def={CARD}>
+            <FoldedGroup def={CARD}>
                 <Row option={O.cardMode} note={t('options.stageTrackPillDesc')}>
                     <Segmented
                         value={card.mode}
@@ -285,12 +341,48 @@ const PlayerPage: React.FC = () => {
                         <Toggle checked={card.onHome} onChange={card.setOnHome} />
                     </Row>
                 </Reveal>
+                <Reveal when={card.mode !== 'never'}>
+                    <Row sub option={O.cardHeight} note={t('options.stageTrackPillHeightDesc')}>
+                        <Slider
+                            value={card.heightPx}
+                            min={STAGE_TRACK_PILL_HEIGHT_MIN}
+                            max={STAGE_TRACK_PILL_HEIGHT_MAX}
+                            step={2}
+                            onChange={card.setHeightPx}
+                            format={value => `${value}px`}
+                        />
+                    </Row>
+                </Reveal>
+                <Reveal when={card.mode !== 'never'}>
+                    <Row sub option={O.cardOffsetX} note={t('options.stageTrackPillOffsetXDesc')}>
+                        <Slider
+                            value={card.offsetXPx}
+                            min={STAGE_TRACK_PILL_OFFSET_X_MIN}
+                            max={STAGE_TRACK_PILL_OFFSET_X_MAX}
+                            step={4}
+                            onChange={card.setOffsetXPx}
+                            format={value => `${value > 0 ? '+' : ''}${value}px`}
+                        />
+                    </Row>
+                </Reveal>
+                <Reveal when={card.mode !== 'never'}>
+                    <Row sub option={O.cardOffsetY} note={t('options.stageTrackPillOffsetYDesc')}>
+                        <Slider
+                            value={card.offsetYPx}
+                            min={STAGE_TRACK_PILL_OFFSET_Y_MIN}
+                            max={STAGE_TRACK_PILL_OFFSET_Y_MAX}
+                            step={4}
+                            onChange={card.setOffsetYPx}
+                            format={value => `${value > 0 ? '+' : ''}${value}px`}
+                        />
+                    </Row>
+                </Reveal>
                 <Row option={O.cardCloseButton} hint={t('options.showOpenPanelCloseButtonDesc')}>
                     <Toggle checked={chrome.cardCloseButton} onChange={chrome.setCardCloseButton} />
                 </Row>
-            </Group>
+            </FoldedGroup>
 
-            <Group def={VIDEO}>
+            <FoldedGroup def={VIDEO}>
                 <Row
                     option={O.videoEnabled}
                     note={(
@@ -352,7 +444,7 @@ const PlayerPage: React.FC = () => {
                         />
                     </Row>
                 </Reveal>
-            </Group>
+            </FoldedGroup>
 
             <FoldedGroup def={PLAYER_UI}>
                 <Row option={O.hideProgressBar} note={t('options.labHidePlayerUiDesc')}>
@@ -369,6 +461,71 @@ const PlayerPage: React.FC = () => {
                 </Row>
                 <Row option={O.alwaysTrackSwitch} note={t('options.alwaysShowTrackSwitchButtonsDesc')}>
                     <Toggle checked={chrome.alwaysTrackSwitch} onChange={chrome.setAlwaysTrackSwitch} />
+                </Row>
+                <Row option={O.doubleTapGesture} note={t('options.playerDoubleTapGestureDesc')}>
+                    <Toggle checked={chrome.doubleTapGesture} onChange={chrome.setDoubleTapGesture} />
+                </Row>
+                <Row option={O.longPressQueue} note={t('options.playerLongPressQueueDesc')}>
+                    <Toggle checked={chrome.longPressQueue} onChange={chrome.setLongPressQueue} />
+                </Row>
+                <Row sub option={O.panelHandleOffsetX} note={t('options.panelHandleOffsetXDesc')}>
+                    <Slider
+                        value={chrome.panelHandleOffsetX}
+                        min={PANEL_HANDLE_OFFSET_X_MIN}
+                        max={PANEL_HANDLE_OFFSET_X_MAX}
+                        step={4}
+                        onChange={chrome.setPanelHandleOffsetX}
+                        format={value => `${value > 0 ? '+' : ''}${value}px`}
+                    />
+                </Row>
+                <Row sub option={O.panelHandleOffsetY} note={t('options.panelHandleOffsetYDesc')}>
+                    <Slider
+                        value={chrome.panelHandleOffsetY}
+                        min={PANEL_HANDLE_OFFSET_Y_MIN}
+                        max={PANEL_HANDLE_OFFSET_Y_MAX}
+                        step={4}
+                        onChange={chrome.setPanelHandleOffsetY}
+                        format={value => `${value > 0 ? '+' : ''}${value}px`}
+                    />
+                </Row>
+                <Row option={O.expandedTrackSwitch} note={t('options.showExpandedTrackSwitchButtonsDesc')}>
+                    <Toggle checked={chrome.expandedTrackSwitch} onChange={chrome.setExpandedTrackSwitch} />
+                </Row>
+                <Row sub option={O.barWidth} note={t('options.playerBarWidthDesc')}>
+                    <Slider
+                        value={chrome.barWidth}
+                        min={0}
+                        max={PLAYER_BAR_WIDTH_MAX}
+                        step={8}
+                        onChange={chrome.setBarWidth}
+                        format={value => (value === 0 ? '自动' : `${value}px`)}
+                    />
+                </Row>
+                <Row sub option={O.barHeight} note={t('options.playerBarHeightDesc')}>
+                    <Slider
+                        value={chrome.barHeight}
+                        min={0}
+                        max={PLAYER_BAR_HEIGHT_MAX}
+                        step={4}
+                        onChange={chrome.setBarHeight}
+                        format={value => (value === 0 ? '自动' : `${value}px`)}
+                    />
+                </Row>
+                <Row sub option={O.barRadius} note={t('options.playerBarRadiusDesc')}>
+                    <Slider
+                        value={chrome.barRadius}
+                        min={0}
+                        max={PLAYER_BAR_RADIUS_MAX}
+                        step={2}
+                        onChange={chrome.setBarRadius}
+                        format={value => (value === 0 ? '自动' : `${value}px`)}
+                    />
+                </Row>
+                <Row option={O.titleTrackArrows} note={t('options.showTitleTrackArrowsDesc')}>
+                    <Toggle checked={chrome.titleTrackArrows} onChange={chrome.setTitleTrackArrows} />
+                </Row>
+                <Row option={O.barClickToExpand} note={t('options.playerBarClickToExpandDesc')}>
+                    <Toggle checked={chrome.barClickToExpand} onChange={chrome.setBarClickToExpand} />
                 </Row>
             </FoldedGroup>
         </>

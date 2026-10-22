@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 import { useDesktopSettingsStore } from '../../../../stores/useDesktopSettingsStore';
 import { usePlayerChromeSettingsStore } from '../../../../stores/usePlayerChromeSettingsStore';
-import { FoldedGroup, Group, Reveal, Row, Toggle, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
+import { FoldedGroup, Reveal, Row, Toggle, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
 import { WallpaperDisplayRow } from './desktop/WallpaperDisplayRow';
 import { hasWallpaperDisplayChoice } from './desktop/wallpaperDisplays';
 
@@ -71,7 +71,7 @@ const DesktopPage: React.FC = () => {
 
     return (
         <>
-            <Group def={WINDOW}>
+            <FoldedGroup def={WINDOW}>
                 <Row option={O.minimizeToTray}>
                     <Toggle checked={desktop.minimizeToTray} onChange={desktop.setMinimizeToTray} />
                 </Row>
@@ -110,7 +110,7 @@ const DesktopPage: React.FC = () => {
                         <Toggle checked={desktop.wallpaperDock} onChange={desktop.setWallpaperDock} />
                     </Row>
                 )}
-            </Group>
+            </FoldedGroup>
 
             <FoldedGroup
                 def={REMOTE}

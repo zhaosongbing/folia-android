@@ -91,6 +91,11 @@ type AppViewState = {
     isLatticeLeftForPage: boolean;
     isPanelOpen: boolean;
     panelTab: PanelTab;
+    /**
+     * 长按入口打开面板时的展开锚点（视口坐标）。null = 面板贴右缘的默认形态。
+     * 只有长按会写它；把手、命令面板、快捷键这些入口一律留 null。
+     */
+    playerPanelAnchor: { x: number; y: number } | null;
     /** The home surface has finished animating out, so it can stop rendering entirely. */
     isHomeFullyHidden: boolean;
 
@@ -112,6 +117,7 @@ type AppViewState = {
     setLatticeReturnTileId: (tileId: string | null) => void;
     setIsLatticeLeftForPage: (isLeft: boolean) => void;
     setIsPanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
+    setPlayerPanelAnchor: (anchor: { x: number; y: number } | null) => void;
     setPanelTab: React.Dispatch<React.SetStateAction<PanelTab>>;
     setIsHomeFullyHidden: React.Dispatch<React.SetStateAction<boolean>>;
     /** Returns the unregister function. Registering replaces whoever held it. */
@@ -132,6 +138,7 @@ export const useAppViewStore = create<AppViewState>((set, get) => ({
     isLatticeLeftForPage: false,
     isPanelOpen: false,
     panelTab: 'cover',
+    playerPanelAnchor: null,
     isHomeFullyHidden: false,
     commandFilter: null,
     isCommandFilterOpen: false,
@@ -142,7 +149,13 @@ export const useAppViewStore = create<AppViewState>((set, get) => ({
     setLatticeSource: (source) => set({ latticeSource: source }),
     setLatticeReturnTileId: (tileId) => set({ latticeReturnTileId: tileId }),
     setIsLatticeLeftForPage: (isLeft) => set({ isLatticeLeftForPage: isLeft }),
-    setIsPanelOpen: (next) => set({ isPanelOpen: resolve(next, get().isPanelOpen) }),
+    setIsPanelOpen: (next) => {
+        const open = resolve(next, get().isPanelOpen);
+        // 关面板一律把锚点一起清掉：否则下次从把手或命令面板打开，面板会停在长按那个位置。
+        set(open ? { isPanelOpen: open } : { isPanelOpen: open, playerPanelAnchor: null });
+    },
+    // 用别的方式关面板时把锚点一起清掉：否则下次从把手打开会停在长按那个位置。
+    setPlayerPanelAnchor: (anchor) => set({ playerPanelAnchor: anchor }),
     setPanelTab: (next) => set({ panelTab: resolve(next, get().panelTab) }),
     setIsHomeFullyHidden: (next) => set({ isHomeFullyHidden: resolve(next, get().isHomeFullyHidden) }),
     registerCommandFilter: (handle) => {
@@ -165,6 +178,7 @@ export const useAppViewStore = create<AppViewState>((set, get) => ({
 // Module-level handles for the assembly layer: these are actions, so they need no subscription.
 // Importing them where they are used keeps App.tsx out of the chain (see setStatusMessage).
 export const setIsPanelOpen: AppViewState['setIsPanelOpen'] = (next) => useAppViewStore.getState().setIsPanelOpen(next);
+export const setPlayerPanelAnchor: AppViewState['setPlayerPanelAnchor'] = (anchor) => useAppViewStore.getState().setPlayerPanelAnchor(anchor);
 export const setPanelTab: AppViewState['setPanelTab'] = (next) => useAppViewStore.getState().setPanelTab(next);
 export const registerCommandFilter: AppViewState['registerCommandFilter'] = (handle) => useAppViewStore.getState().registerCommandFilter(handle);
 export const setIsCommandFilterOpen: AppViewState['setIsCommandFilterOpen'] = (isOpen) => useAppViewStore.getState().setIsCommandFilterOpen(isOpen);

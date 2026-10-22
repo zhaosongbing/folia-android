@@ -9,7 +9,7 @@ import { setStatusMessage } from '../../../../stores/useStatusMessageStore';
 import { DEFAULT_LOCAL_LYRIC_FORMAT_ORDER, isSameLocalLyricFormatOrder, type LocalLyricFileFormat } from '../../../../utils/lyrics/localLyricFormatOrder';
 import { getLyricProviderPreferenceLabel } from '../../../../utils/lyrics/lyricSourceLabels';
 import { DEFAULT_PREFERRED_LYRIC_SOURCE } from '../../../../utils/lyrics/sourcePriority';
-import { Button, FoldedGroup, Group, OrderList, Reveal, Row, Segmented, Select, Toggle, Value, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
+import { Button, FoldedGroup, OrderList, Reveal, Row, Segmented, Select, Toggle, Value, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
 import { useSettingsPage } from './settingsPageContext';
 
 // src/components/modal/settings/pages/LyricsPage.tsx
@@ -77,7 +77,7 @@ const LyricsPage: React.FC = () => {
 
     return (
         <>
-            <Group def={SOURCE}>
+            <FoldedGroup def={SOURCE}>
                 <Row option={O.autoBest} note={t(sources.includes('spotify') ? 'options.autoUseBestLyricDescSpotify' : 'options.autoUseBestLyricDesc')}>
                     <Toggle checked={lyric.autoBest} onChange={lyric.setAutoBest} />
                 </Row>
@@ -102,14 +102,14 @@ const LyricsPage: React.FC = () => {
                         onChange={lyric.setLocalPriority}
                     />
                 </Row>
-            </Group>
+            </FoldedGroup>
 
-            <Group def={ADJUST}>
+            <FoldedGroup def={ADJUST}>
                 <Row option={O.globalOffset} hint={t('options.globalLyricTimelineOffsetDesc')} onClick={onOpenGlobalLyricOffsetSettings}>
                     <Value>{`${lyric.globalOffsetMs > 0 ? '+' : ''}${lyric.globalOffsetMs} ms`}</Value>
                 </Row>
                 <Row option={O.filter} hint={t('options.lyricFilterRegexDesc')} onClick={onOpenLyricFilterSettings} />
-            </Group>
+            </FoldedGroup>
 
             <FoldedGroup def={FORMATS} summary={t('options.localLyricFormatOrderFirst', { format: `.${lyric.formatOrder[0]}` })}>
                 <Row

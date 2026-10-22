@@ -39,6 +39,53 @@ const readStoredStageTrackPillTimeoutSec = (): number => {
     return Number.isFinite(saved) && saved >= 3 && saved <= 60 ? Math.round(saved) : 10;
 };
 
+/** 歌曲信息卡片高度（px）：56 = 紧凑，60 = 原尺寸，112 = 大号。 */
+export const STAGE_TRACK_PILL_HEIGHT_MIN = 56;
+export const STAGE_TRACK_PILL_HEIGHT_MAX = 112;
+export const STAGE_TRACK_PILL_HEIGHT_DEFAULT = 60;
+/** 上面三个档位所对应的「原尺寸」：卡片内部各项都按 height / 60 等比缩放。 */
+export const STAGE_TRACK_PILL_HEIGHT_BASE = STAGE_TRACK_PILL_HEIGHT_DEFAULT;
+
+const clampStageTrackPillHeight = (value: number): number => {
+    if (!Number.isFinite(value)) return STAGE_TRACK_PILL_HEIGHT_DEFAULT;
+    return Math.max(
+        STAGE_TRACK_PILL_HEIGHT_MIN,
+        Math.min(STAGE_TRACK_PILL_HEIGHT_MAX, Math.round(value)),
+    );
+};
+
+const readStoredStageTrackPillHeightPx = (): number => {
+    if (typeof window === 'undefined') {
+        return STAGE_TRACK_PILL_HEIGHT_DEFAULT;
+    }
+
+    const saved = Number(localStorage.getItem('stage_track_pill_height_px'));
+    return Number.isFinite(saved) ? clampStageTrackPillHeight(saved) : STAGE_TRACK_PILL_HEIGHT_DEFAULT;
+};
+
+/**
+ * 卡片位置偏移（px），约定「默认 0 = 原来靠左下、与控制栏同基线的位置」：
+ * - 水平正值向右，负值向左（最小 -24，正好贴到屏幕左缘，因为默认左距就是 24px）；
+ * - 垂直正值向上（bottom 变大），负值向下。
+ * 上限取得比较宽，是为了大屏上能把卡片挪到右侧或上方；越界一律钳回区间。
+ */
+export const STAGE_TRACK_PILL_OFFSET_X_MIN = -24;
+export const STAGE_TRACK_PILL_OFFSET_X_MAX = 400;
+export const STAGE_TRACK_PILL_OFFSET_Y_MIN = -120;
+export const STAGE_TRACK_PILL_OFFSET_Y_MAX = 480;
+export const STAGE_TRACK_PILL_OFFSET_DEFAULT = 0;
+
+const clampOffset = (value: number, min: number, max: number): number => {
+    if (!Number.isFinite(value)) return STAGE_TRACK_PILL_OFFSET_DEFAULT;
+    return Math.max(min, Math.min(max, Math.round(value)));
+};
+
+const readStoredStageTrackPillOffset = (key: string, min: number, max: number): number => {
+    if (typeof window === 'undefined') return STAGE_TRACK_PILL_OFFSET_DEFAULT;
+    const saved = Number(localStorage.getItem(key));
+    return Number.isFinite(saved) ? clampOffset(saved, min, max) : STAGE_TRACK_PILL_OFFSET_DEFAULT;
+};
+
 export type StageSettingsState = {
     enableNowPlayingStage: boolean;
     // PlayerCap lyrics source (third stage source) config. enablePlayerCapStage is Web-only (Electron uses stageStatus.source).
@@ -53,6 +100,12 @@ export type StageSettingsState = {
     stageTrackPillMode: StageTrackPillMode;
     /** auto 模式下的显示时长（秒），3-60 */
     stageTrackPillTimeoutSec: number;
+    /** 歌曲信息卡片高度（px）：56-112，卡片内封面与字号按它等比缩放 */
+    stageTrackPillHeightPx: number;
+    /** 卡片水平偏移（px）：0 = 默认靠左位置，正值向右 */
+    stageTrackPillOffsetXPx: number;
+    /** 卡片垂直偏移（px）：0 = 默认底距，正值向上 */
+    stageTrackPillOffsetYPx: number;
     stageTrackPillOnHome: boolean;
     /** OBS 浏览器源有客户端连接时，主窗口是否继续渲染重动画（默认 false = 主窗口切到 still） */
     obsKeepMainWindowAnimation: boolean;
@@ -65,6 +118,9 @@ export type StageSettingsState = {
     setWebObsThemeMode: (mode: 'static' | 'builtin' | 'ai') => void;
     handleSetStageTrackPillMode: (mode: StageTrackPillMode) => void;
     handleSetStageTrackPillTimeoutSec: (sec: number) => void;
+    handleSetStageTrackPillHeightPx: (px: number) => void;
+    handleSetStageTrackPillOffsetXPx: (px: number) => void;
+    handleSetStageTrackPillOffsetYPx: (px: number) => void;
     handleToggleStageTrackPillOnHome: (enable: boolean) => void;
     handleToggleObsKeepMainWindowAnimation: (enable: boolean) => void;
 };
@@ -79,6 +135,17 @@ export const useStageSettingsStore = create<StageSettingsState>((set, get) => ({
     webObsThemeMode: readStoredWebObsThemeMode(),
     stageTrackPillMode: readStoredStageTrackPillMode(),
     stageTrackPillTimeoutSec: readStoredStageTrackPillTimeoutSec(),
+    stageTrackPillHeightPx: readStoredStageTrackPillHeightPx(),
+    stageTrackPillOffsetXPx: readStoredStageTrackPillOffset(
+        'stage_track_pill_offset_x_px',
+        STAGE_TRACK_PILL_OFFSET_X_MIN,
+        STAGE_TRACK_PILL_OFFSET_X_MAX,
+    ),
+    stageTrackPillOffsetYPx: readStoredStageTrackPillOffset(
+        'stage_track_pill_offset_y_px',
+        STAGE_TRACK_PILL_OFFSET_Y_MIN,
+        STAGE_TRACK_PILL_OFFSET_Y_MAX,
+    ),
     stageTrackPillOnHome: getStoredBoolean('stage_track_pill_on_home', false),
     obsKeepMainWindowAnimation: getStoredBoolean('obs_keep_main_window_animation', false),
     setWebStageSource: (source) => {
@@ -130,6 +197,27 @@ export const useStageSettingsStore = create<StageSettingsState>((set, get) => ({
         }
         set({ stageTrackPillTimeoutSec: next });
     },
+    handleSetStageTrackPillHeightPx: (px) => {
+        const next = clampStageTrackPillHeight(px);
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('stage_track_pill_height_px', String(next));
+        }
+        set({ stageTrackPillHeightPx: next });
+    },
+    handleSetStageTrackPillOffsetXPx: (px) => {
+        const next = clampOffset(px, STAGE_TRACK_PILL_OFFSET_X_MIN, STAGE_TRACK_PILL_OFFSET_X_MAX);
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('stage_track_pill_offset_x_px', String(next));
+        }
+        set({ stageTrackPillOffsetXPx: next });
+    },
+    handleSetStageTrackPillOffsetYPx: (px) => {
+        const next = clampOffset(px, STAGE_TRACK_PILL_OFFSET_Y_MIN, STAGE_TRACK_PILL_OFFSET_Y_MAX);
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('stage_track_pill_offset_y_px', String(next));
+        }
+        set({ stageTrackPillOffsetYPx: next });
+    },
     handleToggleStageTrackPillOnHome: (enable) => {
         if (typeof window !== 'undefined') {
             localStorage.setItem('stage_track_pill_on_home', String(enable));
@@ -156,6 +244,9 @@ export const selectStageSettingsSnapshot = (state: StageSettingsState) => ({
     webObsThemeMode: state.webObsThemeMode,
     stageTrackPillMode: state.stageTrackPillMode,
     stageTrackPillTimeoutSec: state.stageTrackPillTimeoutSec,
+    stageTrackPillHeightPx: state.stageTrackPillHeightPx,
+    stageTrackPillOffsetXPx: state.stageTrackPillOffsetXPx,
+    stageTrackPillOffsetYPx: state.stageTrackPillOffsetYPx,
     stageTrackPillOnHome: state.stageTrackPillOnHome,
     obsKeepMainWindowAnimation: state.obsKeepMainWindowAnimation,
     setWebStageSource: state.setWebStageSource,
@@ -166,6 +257,9 @@ export const selectStageSettingsSnapshot = (state: StageSettingsState) => ({
     setWebObsThemeMode: state.setWebObsThemeMode,
     handleSetStageTrackPillMode: state.handleSetStageTrackPillMode,
     handleSetStageTrackPillTimeoutSec: state.handleSetStageTrackPillTimeoutSec,
+    handleSetStageTrackPillHeightPx: state.handleSetStageTrackPillHeightPx,
+    handleSetStageTrackPillOffsetXPx: state.handleSetStageTrackPillOffsetXPx,
+    handleSetStageTrackPillOffsetYPx: state.handleSetStageTrackPillOffsetYPx,
     handleToggleStageTrackPillOnHome: state.handleToggleStageTrackPillOnHome,
     handleToggleObsKeepMainWindowAnimation: state.handleToggleObsKeepMainWindowAnimation,
 });

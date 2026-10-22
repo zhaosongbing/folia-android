@@ -137,6 +137,9 @@ const FIELD_GROUPS: Record<string, ImportGroup> = {
     // colours has a reason to leave the card alone, and a reason to take all three of it at once.
     stageTrackPillMode: 'trackCard',
     stageTrackPillTimeoutSec: 'trackCard',
+    stageTrackPillHeightPx: 'trackCard',
+    stageTrackPillOffsetXPx: 'trackCard',
+    stageTrackPillOffsetYPx: 'trackCard',
     stageTrackPillOnHome: 'trackCard',
 
     // The bravais wall's collection stack edges. Its own group: it styles the library wall, not the

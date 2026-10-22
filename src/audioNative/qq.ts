@@ -481,17 +481,31 @@ export const handleQqEndpoint = async (
       }
       case '/user/playlist-detail': {
         if (!credential) return answer({ code: 401, message: 'login required' }, 401);
+        // provider 的 loadRawOwnedPlaylistTracks 按 { songs, total, more } 解析；
+        // CgiGetDiss 回的是 { songlist, total_song_num }。这里必须做形状适配，
+        // 否则 songs 取不到，界面表现为「点开歌单没有歌曲」。
+        const rawId = Number(params.tid ?? 0) || Number(params.dirid ?? 0) || 0;
+        // 小于 10000 的是自建目录号，其余按歌单 disstid 读 —— 与 song_list_detail 同一套判据。
+        const isDir = rawId > 0 && rawId < 10000;
+        const offset = Number(params.offset ?? 0) || 0;
+        const limit = Number(params.limit ?? 100) || 100;
         const musicu = await postMusicu({
           module: 'music.srfDissInfo.DissInfo', method: 'CgiGetDiss',
-          param: { disstid: Number(params.tid ?? params.dirid ?? '0'), song_begin: Number(params.offset ?? '0'), song_num: Number(params.limit ?? '100') },
+          param: isDir
+            ? { dirid: rawId, disstid: 0, tag: true, song_begin: offset, song_num: limit, userinfo: true, orderlist: true }
+            : { disstid: rawId, tag: true, song_begin: offset, song_num: limit, userinfo: true, orderlist: true },
         }, credential);
-        return answer({ code: 200, ...(reqData(musicu) ?? {}) });
-      }
-      case '/user/playlist-detail': {
-        return answer({ code: 200, play_cnt: 0 });
-      }
-      case '/user/playlist-detail': {
-        return answer({ code: 200, play_cnt: 0 });
+        const data = (reqData(musicu) ?? {}) as any;
+        const songs: any[] = Array.isArray(data?.songlist) ? data.songlist : [];
+        const totalNum = Number(data?.total_song_num ?? songs.length);
+        const playCount = data?.dirinfo?.listennum ?? data?.listen_num;
+        return answer({
+          code: 200,
+          songs,
+          total: Number.isFinite(totalNum) ? totalNum : songs.length,
+          more: Number.isFinite(totalNum) && offset + songs.length < totalNum,
+          ...(playCount === undefined ? {} : { play_cnt: playCount }),
+        });
       }
       case '/radio/list': {
         const musicu = await postMusicu({ module: 'pf.radiosvr', method: 'GetRadiolist', param: { uin: credential?.musicid ?? 0 } }, credential);

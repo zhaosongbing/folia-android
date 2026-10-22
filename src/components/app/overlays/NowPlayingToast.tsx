@@ -1,11 +1,12 @@
 import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useMotionValue } from 'framer-motion';
 import { Music } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Theme } from '../../../types';
 import { useTransitionBorderCue } from './now-playing-toast/useTransitionBorderCue';
 import { usePlayerBottomBarBottomPx } from '../../../hooks/usePlayerBottomBarBottomPx';
 import { usePlayerOverlayObstacle } from '../../../hooks/usePlayerOverlayLayout';
+import { STAGE_TRACK_PILL_HEIGHT_BASE, useStageSettingsStore } from '../../../stores/useStageSettingsStore';
 
 // src/components/app/overlays/NowPlayingToast.tsx
 // 播放器与 Lattice 左下角的 now playing 卡片（playing-toast 样式：圆角 2xl、44px 封面、底部滑入）。
@@ -24,6 +25,9 @@ const NowPlayingToastTransitionBorder = lazy(() => import('./now-playing-toast/N
 
 /** 卡片圆角，和下面的 rounded-2xl 对齐；描边要按它算圆角 */
 const CARD_RADIUS = 16;
+
+/** 默认左边距（原 left-6 = 24px）。位置偏移是相对它的增量。 */
+const CARD_BASE_LEFT_PX = 24;
 
 export type StageTrackPillMode = 'auto' | 'always' | 'never';
 
@@ -67,6 +71,31 @@ const NowPlayingToast: React.FC<NowPlayingToastProps> = ({
 }) => {
     const { t } = useTranslation();
 
+    // 卡片高度（设置里可调，56-112px）。基准是 60px，即原来 44px 封面 + 上下 8px 内边距撑出的高度，
+    // 内部各尺寸都按 pillScale 等比缩放：调高时封面和字号一起变大，调矮时一起收，
+    // 不会出现「卡片拉高了但内容还挤在中间」或者「压矮之后文字被 overflow-hidden 裁掉」。
+    // 圆角保持 16px 不变：混音描边按 CARD_RADIUS 计算圆角，跟着缩放会让描边和卡片边框对不上。
+    const pillHeightPx = useStageSettingsStore(state => state.stageTrackPillHeightPx);
+    const pillScale = Math.max(0.5, pillHeightPx / STAGE_TRACK_PILL_HEIGHT_BASE);
+    const pillPadY = Math.round(8 * pillScale);
+    const pill = {
+        height: pillHeightPx,
+        padY: pillPadY,
+        padLeft: Math.round(8 * pillScale),
+        padRight: Math.round(16 * pillScale),
+        gap: Math.round(12 * pillScale),
+        coverSize: Math.max(20, pillHeightPx - pillPadY * 2),
+        minWidth: Math.round(240 * pillScale),
+        textMaxWidth: Math.round(200 * pillScale),
+        labelSize: Math.round(9 * pillScale * 10) / 10,
+        labelLine: Math.max(9, Math.round(10 * pillScale)),
+        titleSize: Math.round(13 * pillScale * 10) / 10,
+        titleLine: Math.max(14, Math.round(16 * pillScale)),
+        artistSize: Math.round(11 * pillScale * 10) / 10,
+        artistLine: Math.max(13, Math.round(14 * pillScale)),
+        iconSize: Math.round(18 * pillScale),
+    };
+
     // 预览态内容收口：isNextUp 且给了 nextUp 时整卡展示下一首，否则常规
     const shown = isNextUp && nextUp ? nextUp : song;
     const label = isNextUp ? t('ui.stageTrackPillNext') : t('ui.stageTrackPillNow');
@@ -83,6 +112,19 @@ const NowPlayingToast: React.FC<NowPlayingToastProps> = ({
     // 而全屏圆环已经让位了。
     const bottomBarBottomPx = usePlayerBottomBarBottomPx();
     const transitionCue = useTransitionBorderCue();
+
+    // 卡片位置：水平方向从默认左边距加偏移（负到 -24 正好贴住屏幕左缘）；
+    // 垂直方向在控制栏基线上叠加偏移。基线本身是 MotionValue（控制栏移动时会变），
+    // 所以用 on('change') 持续同步，而不是一次性取值 —— 否则拖动控制栏之后卡片会脱队。
+    const pillOffsetXPx = useStageSettingsStore(state => state.stageTrackPillOffsetXPx);
+    const pillOffsetYPx = useStageSettingsStore(state => state.stageTrackPillOffsetYPx);
+    const pillBottomPx = useMotionValue(0);
+    useEffect(() => {
+        const apply = () => pillBottomPx.set(Math.max(0, bottomBarBottomPx.get() + pillOffsetYPx));
+        apply();
+        return bottomBarBottomPx.on('change', apply);
+    }, [bottomBarBottomPx, pillBottomPx, pillOffsetYPx]);
+    const pillLeftPx = Math.max(0, CARD_BASE_LEFT_PX + pillOffsetXPx);
 
     // 可见性状态机：never 不渲染；always 常驻；auto 换歌重新计时。
     // isNextUp（预览下一首）挂起计时，翻回 false 后（即使 trackKey 没变）重新计时。
@@ -144,8 +186,8 @@ const NowPlayingToast: React.FC<NowPlayingToastProps> = ({
                     transition={{ duration: 0.35, ease: 'easeOut' }}
                     // 底边跟右下角面板开关按钮和中间的进度条胶囊落在同一条基线上，
                     // 由共享 MotionValue 直接驱动 bottom（默认 32，即原来的 bottom-8）。
-                    style={{ bottom: bottomBarBottomPx }}
-                    className="pointer-events-none fixed left-6 z-40"
+                    style={{ bottom: pillBottomPx, left: pillLeftPx }}
+                    className="pointer-events-none fixed z-40"
                 >
                     {/* 描边排在卡片前面：卡片自己是 relative，绘制顺序上压在描边上头，所以
                         描边内侧那一半被卡片背景盖住，露在外面的是外侧 + 辉光。
@@ -192,11 +234,20 @@ const NowPlayingToast: React.FC<NowPlayingToastProps> = ({
                         animate={{ opacity: 1, x: 0 }}
                         whileTap={onActivate ? { opacity: 0.85 } : undefined}
                         transition={{ duration: 0.35, ease: 'easeOut' }}
-                        className={`relative flex min-w-[240px] items-center gap-3 overflow-hidden rounded-2xl border p-2 pr-4 text-left backdrop-blur-xl shadow-lg transition-colors ${
+                        className={`relative flex items-center overflow-hidden rounded-2xl border text-left backdrop-blur-xl shadow-lg transition-colors ${
                             isDaylight ? 'border-black/10 bg-white/35 text-zinc-900' : 'border-white/10 bg-black/35 text-white'
                         } ${onActivate
                             ? `pointer-events-auto cursor-pointer ${isDaylight ? 'hover:bg-white/55' : 'hover:bg-black/55'}`
                             : ''}`}
+                        style={{
+                            height: pill.height,
+                            minWidth: pill.minWidth,
+                            paddingTop: pill.padY,
+                            paddingBottom: pill.padY,
+                            paddingLeft: pill.padLeft,
+                            paddingRight: pill.padRight,
+                            gap: pill.gap,
+                        }}
                     >
                         {/* 顶部光线（进场的横向扫光）。混音期间收掉：描边现在正压在卡片边框上，
                             再叠一条亮线就是同一条边上两层东西，读起来是好几层边框套在一起。 */}
@@ -221,9 +272,10 @@ const NowPlayingToast: React.FC<NowPlayingToastProps> = ({
                             // cover" from "fell back" - the difference used to be invisible from
                             // the outside, which is how the blank square went unnoticed.
                             data-toast-cover={coverSrc ? 'image' : 'placeholder'}
-                            className={`relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg ${
+                            className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-lg ${
                                 isDaylight ? 'bg-zinc-200' : 'bg-zinc-800'
                             }`}
+                            style={{ width: pill.coverSize, height: pill.coverSize }}
                         >
                             {/* An <img> rather than a background-image, for the two things a
                                 background cannot do: it reports failure, and the browser parses the
@@ -246,17 +298,22 @@ const NowPlayingToast: React.FC<NowPlayingToastProps> = ({
                                     className="absolute inset-0 h-full w-full object-cover"
                                 />
                             )}
-                            {!coverSrc && <Music size={18} className={isDaylight ? 'text-black/35' : 'text-white/35'} />}
+                            {!coverSrc && <Music size={pill.iconSize} className={isDaylight ? 'text-black/35' : 'text-white/35'} />}
                         </motion.div>
-                        <motion.div layout className="min-w-0 max-w-[200px] flex-1">
+                        <motion.div layout className="min-w-0 flex-1" style={{ maxWidth: pill.textMaxWidth }}>
                             {/* 正在播放 / 接下来播放：歌名上方。切歌那一刻整张卡片不重挂，所以这
                                 一行是自己淡入淡出换掉的，不跟着进场动画走。
                                 高度写死成和 leading 一样的 10px：mode="wait" 换字的中途这一行是
                                 空的，不占住高度的话歌名会往上跳一下再落回来。 */}
                             <div
-                                className={`h-[10px] text-[9px] font-semibold uppercase leading-[10px] tracking-[0.14em] select-none ${
+                                className={`font-semibold uppercase tracking-[0.14em] select-none ${
                                     isDaylight ? 'text-black/45' : 'text-white/45'
                                 }`}
+                                style={{
+                                    height: pill.labelLine,
+                                    fontSize: pill.labelSize,
+                                    lineHeight: `${pill.labelLine}px`,
+                                }}
                             >
                                 <AnimatePresence mode="wait" initial={false}>
                                     <motion.span
@@ -271,11 +328,17 @@ const NowPlayingToast: React.FC<NowPlayingToastProps> = ({
                                     </motion.span>
                                 </AnimatePresence>
                             </div>
-                            <div className="truncate text-[13px] font-bold leading-4">{shown.title}</div>
                             <div
-                                className={`truncate text-[11px] font-medium leading-[14px] ${
+                                className="truncate font-bold"
+                                style={{ fontSize: pill.titleSize, lineHeight: `${pill.titleLine}px` }}
+                            >
+                                {shown.title}
+                            </div>
+                            <div
+                                className={`truncate font-medium ${
                                     isDaylight ? 'text-black/55' : 'text-white/50'
                                 }`}
+                                style={{ fontSize: pill.artistSize, lineHeight: `${pill.artistLine}px` }}
                             >
                                 {shown.artist || t('ui.unknownArtist')}
                             </div>

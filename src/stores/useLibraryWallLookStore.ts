@@ -32,6 +32,10 @@ const LIBRARY_WALL_SEAM_CLEAR_KEY = 'library_wall_seam_clear';
 const LIBRARY_WALL_SEAM_STYLE_KEY = 'library_wall_seam_style';
 const LIBRARY_WALL_BACKDROP_LYRICS_KEY = 'library_wall_backdrop_lyrics';
 const LIBRARY_WALL_BACKDROP_BLUR_KEY = 'library_wall_backdrop_blur';
+/** 信息条顶部标题的自定义文本。空串 = 用默认标题（Folia）。
+ *  刻意没有接入外观导入导出的短码：这是自由文本，短码方案只覆盖枚举与布尔档位，
+ *  强行编码会把它变成不可读的乱码；导出导入时这一项需要单独迁移。 */
+const LIBRARY_WALL_SEAM_TITLE_KEY = 'library_wall_seam_title';
 
 const readStored = (key: string): string | null => {
     if (typeof window === 'undefined') return null;
@@ -60,6 +64,9 @@ const readStoredFlag = (key: string): boolean => readStored(key) === 'true';
 /** 信息条始终透明：默认开（用户定，2026-10-09）；只认 'false' 为关。 */
 const readStoredSeamClear = (): boolean => readStored(LIBRARY_WALL_SEAM_CLEAR_KEY) !== 'false';
 const readStoredSeamStyle = (): LibraryWallSeamStyle => normalizeLibraryWallSeamStyle(readStored(LIBRARY_WALL_SEAM_STYLE_KEY));
+/** 标题长度上限：信息条只有 120px 宽，再长也只能显示前几个字，留 24 字符足够。 */
+const clampSeamTitle = (value: string | null): string => (value ?? '').trim().slice(0, 24);
+const readStoredSeamTitle = (): string => clampSeamTitle(readStored(LIBRARY_WALL_SEAM_TITLE_KEY));
 
 const readAll = () => ({
     look: readStoredLook(),
@@ -69,6 +76,7 @@ const readAll = () => ({
     seamStyle: readStoredSeamStyle(),
     backdropLyrics: readStoredFlag(LIBRARY_WALL_BACKDROP_LYRICS_KEY),
     backdropBlur: readStoredFlag(LIBRARY_WALL_BACKDROP_BLUR_KEY),
+    seamTitle: readStoredSeamTitle(),
 });
 
 export type LibraryWallLookState = {
@@ -88,6 +96,8 @@ export type LibraryWallLookState = {
     backdropLyrics: boolean;
     /** 透出的 visualizer 加模糊（visualizer 那一层的 CSS filter，只在有透出时生效）。 */
     backdropBlur: boolean;
+    /** 信息条标题；空串表示用默认（Folia） */
+    seamTitle: string;
     /** 非法值回默认档后再写入。 */
     setLook: (look: LibraryWallLook) => void;
     /** 先钳到 1–6 再写入。 */
@@ -98,6 +108,7 @@ export type LibraryWallLookState = {
     setSeamStyle: (style: LibraryWallSeamStyle) => void;
     setBackdropLyrics: (enabled: boolean) => void;
     setBackdropBlur: (enabled: boolean) => void;
+    setSeamTitle: (title: string) => void;
     /** 从存储重新读一遍（存储被别处改写、或测试模拟重启时用）。 */
     hydrate: () => void;
 };
@@ -133,5 +144,10 @@ export const useLibraryWallLookStore = create<LibraryWallLookState>(set => ({
     },
     setBackdropLyrics: enabled => set({ backdropLyrics: writeFlag(LIBRARY_WALL_BACKDROP_LYRICS_KEY, enabled) }),
     setBackdropBlur: enabled => set({ backdropBlur: writeFlag(LIBRARY_WALL_BACKDROP_BLUR_KEY, enabled) }),
+    setSeamTitle: (title) => {
+        const clamped = clampSeamTitle(title);
+        writeStored(LIBRARY_WALL_SEAM_TITLE_KEY, clamped);
+        set({ seamTitle: clamped });
+    },
     hydrate: () => set(readAll()),
 }));

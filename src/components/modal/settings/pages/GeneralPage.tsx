@@ -1,13 +1,15 @@
 import React from 'react';
+import { Capacitor } from '@capacitor/core';
 import { RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 import type { AppLanguagePreference } from '../../../../i18n/config';
 import { useAudioSettingsStore } from '../../../../stores/useAudioSettingsStore';
 import { usePlayerChromeSettingsStore } from '../../../../stores/usePlayerChromeSettingsStore';
+import { useAppUpdateStore } from '../../../../stores/useAppUpdateStore';
 import { selectPonderSettingsSnapshot, usePonderStore } from '../../../../stores/usePonderStore';
 import { useSettingsModalStore } from '../../../../stores/useSettingsModalStore';
-import { Button, Group, Reveal, Row, Segmented, Select, Toggle, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
+import { Button, FoldedGroup, Reveal, Row, Segmented, Select, Toggle, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
 import { FoundUpdateRow } from './FoundUpdateRow';
 import { useSettingsPage } from './settingsPageContext';
 
@@ -20,14 +22,20 @@ const LANGUAGE: SettingsGroupDef = { id: 'languageSettings', titleKey: 'options.
 const LAUNCH: SettingsGroupDef = { id: 'labWindowAndTools', titleKey: 'options.settingsHeadingLaunch' };
 const UPDATE: SettingsGroupDef = { id: 'updateCheck', titleKey: 'options.updateCheck', electronOnly: true };
 const PONDER: SettingsGroupDef = { id: 'ponderHints', titleKey: 'options.ponderHints' };
+/** 在线更新：两端都显示（桌面端有自己那套 electron-updater，这里走 GitHub Releases）。 */
+const APP_UPDATE: SettingsGroupDef = { id: 'appUpdate', titleKey: 'options.appUpdateSection' };
 
 const O = {
     language: option(LANGUAGE, 'appLanguage', 'options.appLanguage'),
     autoPlay: option(LAUNCH, 'autoPlayOnLaunch', 'options.autoPlayOnLaunch'),
     openPlayer: option(LAUNCH, 'openPlayerOnLaunch', 'options.openPlayerOnLaunch', { electronOnly: true }),
     titlebarButtons: option(LAUNCH, 'alwaysShowMainWindowTitlebar', 'options.alwaysShowMainWindowTitlebar'),
+    systemBars: option(LAUNCH, 'showSystemBars', 'options.showSystemBars'),
+    confirmOnExit: option(LAUNCH, 'confirmOnExit', 'options.confirmOnExit'),
     updateCheck: option(UPDATE, 'enableUpdateCheck', 'options.enableUpdateCheck'),
     autoUpdate: option(UPDATE, 'enableAutoUpdate', 'options.enableAutoUpdate'),
+    appUpdateOnLaunch: option(APP_UPDATE, 'enableAppUpdateCheck', 'options.enableAppUpdateCheck'),
+    appUpdateNow: option(APP_UPDATE, 'checkAppUpdateNow', 'options.checkAppUpdateNow'),
     updateChannel: option(UPDATE, 'updateChannel', 'options.updateChannel'),
     ponderHints: option(PONDER, 'ponderHintVisibility', 'options.ponderHints'),
     ponderTouchButton: option(PONDER, 'ponderTouchButton', 'options.ponderTouchButton'),
@@ -47,6 +55,30 @@ const GeneralPage: React.FC = () => {
     const setAutoPlay = useAudioSettingsStore(state => state.handleToggleAutoPlayOnLaunch);
     const titlebarButtons = usePlayerChromeSettingsStore(state => state.alwaysShowMainWindowTitlebar);
     const setTitlebarButtons = usePlayerChromeSettingsStore(state => state.handleToggleAlwaysShowMainWindowTitlebar);
+    // 系统栏开关只在原生端有意义（浏览器里没有系统栏可显示）。
+    const showSystemBars = usePlayerChromeSettingsStore(state => state.showSystemBars);
+    const setShowSystemBars = usePlayerChromeSettingsStore(state => state.handleToggleSystemBars);
+    const confirmOnExit = usePlayerChromeSettingsStore(state => state.confirmOnExit);
+    const setConfirmOnExit = usePlayerChromeSettingsStore(state => state.handleToggleConfirmOnExit);
+    // 在线更新：开关、来源与最近一次检查结果都在这个 store 里，启动时的自动检查也读同一份。
+    const appUpdate = useAppUpdateStore(useShallow(state => ({
+        enableAppUpdateCheck: state.enableAppUpdateCheck,
+        handleToggleAppUpdateCheck: state.handleToggleAppUpdateCheck,
+        currentVersion: state.currentVersion,
+        isChecking: state.isChecking,
+        lastResult: state.lastResult,
+        availableUpdate: state.availableUpdate,
+        checkNow: state.checkNow,
+    })));
+    const appUpdateHint = (() => {
+        if (appUpdate.isChecking) return t('appUpdate.checking');
+        if (appUpdate.availableUpdate) {
+            return t('appUpdate.availableHint', { version: appUpdate.availableUpdate.latestVersion });
+        }
+        if (appUpdate.lastResult === 'current') return t('appUpdate.upToDate', { version: appUpdate.currentVersion });
+        if (appUpdate.lastResult === 'error') return t('appUpdate.checkFailed');
+        return t('options.checkAppUpdateNowDesc');
+    })();
     const ponder = usePonderStore(useShallow(selectPonderSettingsSnapshot));
 
     const resolvedLanguage = i18n.resolvedLanguage;
@@ -61,7 +93,7 @@ const GeneralPage: React.FC = () => {
 
     return (
         <>
-            <Group def={LANGUAGE} bare>
+            <FoldedGroup def={LANGUAGE}>
                 <Row
                     option={O.language}
                     hint={languagePreference === 'system' ? t('options.appLanguageSystemHint', { language: resolvedLanguageLabel }) : undefined}
@@ -78,9 +110,9 @@ const GeneralPage: React.FC = () => {
                         onChange={preference => void setLanguagePreference(preference)}
                     />
                 </Row>
-            </Group>
+            </FoldedGroup>
 
-            <Group def={LAUNCH}>
+            <FoldedGroup def={LAUNCH}>
                 <Row option={O.autoPlay} hint={t('options.autoPlayOnLaunchDesc')} note={t('options.autoPlayOnLaunchDescSub')}>
                     <Toggle checked={autoPlay} onChange={setAutoPlay} />
                 </Row>
@@ -92,13 +124,39 @@ const GeneralPage: React.FC = () => {
                 <Row option={O.titlebarButtons} hint={t('options.alwaysShowMainWindowTitlebarDesc')}>
                     <Toggle checked={titlebarButtons} onChange={setTitlebarButtons} />
                 </Row>
-            </Group>
+                {Capacitor.isNativePlatform() && (
+                    <Row option={O.systemBars} note={t('options.showSystemBarsDesc')}>
+                        <Toggle checked={showSystemBars} onChange={setShowSystemBars} />
+                    </Row>
+                )}
+                {Capacitor.isNativePlatform() && (
+                    <Row option={O.confirmOnExit} note={t('options.confirmOnExitDesc')}>
+                        <Toggle checked={confirmOnExit} onChange={setConfirmOnExit} />
+                    </Row>
+                )}
+            </FoldedGroup>
+
+            <FoldedGroup def={APP_UPDATE} summary={t('appUpdate.currentVersionShort', { version: appUpdate.currentVersion })}>
+                <Row option={O.appUpdateOnLaunch} hint={t('options.enableAppUpdateCheckDesc')}>
+                    <Toggle checked={appUpdate.enableAppUpdateCheck} onChange={appUpdate.handleToggleAppUpdateCheck} />
+                </Row>
+                <Row option={O.appUpdateNow} hint={appUpdateHint}>
+                    <Button
+                        variant="quiet"
+                        icon={RefreshCw}
+                        onClick={() => void appUpdate.checkNow(true)}
+                        disabled={appUpdate.isChecking}
+                    >
+                        {appUpdate.isChecking ? t('appUpdate.checking') : t('appUpdate.checkNow')}
+                    </Button>
+                </Row>
+            </FoldedGroup>
 
             {isElectron && (
-                <Group
-                    def={UPDATE}
-                    // The state of the check; pressing it checks again.
-                    action={(
+                <FoldedGroup def={UPDATE} summary={update.updateBadgeLabel}>
+                    {/* 折叠组没有标题行右侧的 action 位，「检查更新」改成内容区第一行；
+                        标题行用 summary 显示当前状态。 */}
+                    <Row>
                         <Button
                             variant="quiet"
                             icon={RefreshCw}
@@ -107,9 +165,7 @@ const GeneralPage: React.FC = () => {
                         >
                             {update.updateBadgeLabel}
                         </Button>
-                    )}
-                    foot={t(autoUpdateSupported ? 'options.autoUpdateGithubNotice' : 'options.updateCheckGithubNotice')}
-                >
+                    </Row>
                     <FoundUpdateRow />
                     <Row
                         option={O.updateCheck}
@@ -144,10 +200,13 @@ const GeneralPage: React.FC = () => {
                             onChange={channel => void update.onUpdateChannelChange(channel as 'realeco' | 'limo' | 'cielo')}
                         />
                     </Row>
-                </Group>
+                                    <p className="mx-1 mt-2 text-xs leading-[18px] text-[color:var(--st-t3)]">
+                        {t(autoUpdateSupported ? 'options.autoUpdateGithubNotice' : 'options.updateCheckGithubNotice')}
+                    </p>
+</FoldedGroup>
             )}
 
-            <Group def={PONDER}>
+            <FoldedGroup def={PONDER}>
                 <Row option={O.ponderHints} hint={t('options.ponderHintsDesc')}>
                     <Segmented
                         value={ponder.ponderHintVisibility}
@@ -162,7 +221,7 @@ const GeneralPage: React.FC = () => {
                 <Row option={O.ponderTouchButton} hint={t('options.ponderTouchButtonDesc')}>
                     <Toggle checked={ponder.showPonderTouchButton} onChange={ponder.setShowPonderTouchButton} />
                 </Row>
-            </Group>
+            </FoldedGroup>
         </>
     );
 };

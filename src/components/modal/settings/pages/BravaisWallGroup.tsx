@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 import { isBravaisLibraryActive, useIsBravaisLibraryActive } from '../../../../library/app/bravaisLibraryActive';
@@ -15,7 +15,7 @@ import {
     LIBRARY_WALL_SEAM_STYLES,
     type LibraryWallSeamStyle,
 } from '../../../../utils/libraryWallSeamStyle';
-import { Group, PictureChoice, Reveal, Row, Segmented, Toggle, option, type SettingsGroupDef } from '../kit';
+import { FoldedGroup, PictureChoice, Reveal, Row, Segmented, TextField, Toggle, option, type SettingsGroupDef } from '../kit';
 
 // src/components/modal/settings/pages/BravaisWallGroup.tsx
 // The Bravais 墙面 group of the 主页与歌单 page: every setting only the bravais library UI has. How
@@ -37,6 +37,7 @@ const O = {
     seamStyle: option(BRAVAIS_WALL, 'bravaisSeamStyle', 'options.bravaisSeamStyle'),
     backdropLyrics: option(BRAVAIS_WALL, 'bravaisBackdropLyrics', 'options.bravaisBackdropLyrics'),
     backdropBlur: option(BRAVAIS_WALL, 'bravaisBackdropBlur', 'options.bravaisBackdropBlur'),
+    seamTitle: option(BRAVAIS_WALL, 'bravaisSeamTitle', 'options.bravaisSeamTitle'),
 };
 
 export const BRAVAIS_WALL_OPTIONS = Object.values(O);
@@ -63,6 +64,8 @@ const SeamSwatch: React.FC<{ style: LibraryWallSeamStyle; glyph: string }> = ({ 
 export const BravaisWallGroup: React.FC = () => {
     const { t } = useTranslation();
     const isBravaisActive = useIsBravaisLibraryActive();
+    // 标题是自由文本：用草稿 + 失焦/回车提交，避免每敲一个字就往存储里写一次。
+    const [titleDraft, setTitleDraft] = useState('');
     const wall = useLibraryWallLookStore(useShallow(state => ({
         look: state.look,
         windowsPerBlock: state.windowsPerBlock,
@@ -71,6 +74,7 @@ export const BravaisWallGroup: React.FC = () => {
         seamStyle: state.seamStyle,
         backdropLyrics: state.backdropLyrics,
         backdropBlur: state.backdropBlur,
+        seamTitle: state.seamTitle,
         setLook: state.setLook,
         setWindowsPerBlock: state.setWindowsPerBlock,
         setStackEdges: state.setCollectionStackEdges,
@@ -78,14 +82,25 @@ export const BravaisWallGroup: React.FC = () => {
         setSeamStyle: state.setSeamStyle,
         setBackdropLyrics: state.setBackdropLyrics,
         setBackdropBlur: state.setBackdropBlur,
+        setSeamTitle: state.setSeamTitle,
     })));
+    // store 里的标题变化（例如导入配置）后把草稿拉齐
+    useEffect(() => { setTitleDraft(wall.seamTitle); }, [wall.seamTitle]);
 
     if (!isBravaisActive) return null;
 
     const glyph = t('options.bravaisSeamSwatchGlyph');
 
     return (
-        <Group def={BRAVAIS_WALL}>
+        <FoldedGroup def={BRAVAIS_WALL}>
+            <Row option={O.seamTitle} note={t('options.bravaisSeamTitleDesc')}>
+                <TextField
+                    value={titleDraft}
+                    onChange={setTitleDraft}
+                    onCommit={() => wall.setSeamTitle(titleDraft)}
+                    placeholder={t('libraryBravais.homeTitle')}
+                />
+            </Row>
             <Row option={O.look} hint={t(LOOK_KEYS[wall.look].description)} note={t('options.libraryWallLookDesc')}>
                 <Segmented
                     value={wall.look}
@@ -137,7 +152,7 @@ export const BravaisWallGroup: React.FC = () => {
             <Row option={O.backdropBlur} note={t('options.bravaisBackdropBlurDesc')}>
                 <Toggle checked={wall.backdropBlur} onChange={wall.setBackdropBlur} />
             </Row>
-        </Group>
+        </FoldedGroup>
     );
 };
 

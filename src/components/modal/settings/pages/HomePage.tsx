@@ -14,7 +14,7 @@ import { omni } from '../../../../services/onlineMusic/omni';
 import { useGridViewSettingsStore } from '../../../../stores/useGridViewSettingsStore';
 import { useHomeLayoutSettingsStore } from '../../../../stores/useHomeLayoutSettingsStore';
 import { useOnlineProviderAccountStore } from '../../../../stores/useOnlineProviderAccountStore';
-import { Button, Chips, Group, PictureChoice, Reveal, Row, Segmented, Slider, Toggle, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
+import { Button, Chips, FoldedGroup, PictureChoice, Reveal, Row, Segmented, Slider, Toggle, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
 import { BRAVAIS_WALL_OPTIONS, BravaisWallGroup } from './BravaisWallGroup';
 import { GridCardsPreview, HomeCardStylePicture } from './pictures';
 
@@ -86,7 +86,7 @@ const HomePage: React.FC = () => {
     return (
         <>
             {hasLibrarySuiteChoice() && (
-                <Group def={SUITE} bare>
+                <FoldedGroup def={SUITE}>
                     <Row option={O.suite} note={t('options.librarySuiteDesc')}>
                         <Segmented
                             value={activeSuiteId}
@@ -94,11 +94,11 @@ const HomePage: React.FC = () => {
                             onChange={chooseLibrarySuite}
                         />
                     </Row>
-                </Group>
+                </FoldedGroup>
             )}
             <BravaisWallGroup />
 
-            <Group def={HOME}>
+            <FoldedGroup def={HOME}>
                 {/* The entries are one option: one row, a chip for each, named and ordered as the home screen has them. */}
                 <Row option={O.tabs}>
                     <Chips
@@ -124,24 +124,25 @@ const HomePage: React.FC = () => {
                 <Row option={O.rememberPosition} note={t('options.rememberHomeCardPositionDesc')}>
                     <Toggle checked={home.rememberPosition} onChange={home.setRememberPosition} />
                 </Row>
-            </Group>
+            </FoldedGroup>
 
-            <Group
-                def={GRID}
-                action={(
-                    <Button variant="quiet" icon={RotateCcw} onClick={grid.resetFalloff} disabled={isDefaultFalloff}>
-                        {t('options.gridViewCardFalloffReset')}
-                    </Button>
-                )}
-                preview={(
+            <FoldedGroup def={GRID}>
+                {/* 预览图原先在卡片顶部常显，折叠组里改为收进内容区：组折叠时看不到预览，
+                    展开时才出现 —— 折叠组的意义就是让这一屏只露标题。 */}
+                <div aria-hidden className="relative m-3 h-[136px] overflow-hidden rounded-lg bg-[var(--st-pv)]">
                     <GridCardsPreview
                         minScale={grid.minCardScale}
                         minOpacity={grid.minCardOpacity}
                         fullBleedCover={grid.fullBleedCover}
                         squareCards={grid.squareCards}
                     />
-                )}
-            >
+                </div>
+                {/* 「恢复默认」原先在标题行右侧，折叠组没有那个位置，改成内容区第一行 */}
+                <Row>
+                    <Button variant="quiet" icon={RotateCcw} onClick={grid.resetFalloff} disabled={isDefaultFalloff}>
+                        {t('options.gridViewCardFalloffReset')}
+                    </Button>
+                </Row>
                 <Row option={O.fullBleedCover} hint={t('options.gridViewFullBleedCoverHint')} note={t('options.gridViewFullBleedCoverDesc')}>
                     <Toggle checked={grid.fullBleedCover} onChange={grid.setFullBleedCover} />
                 </Row>
@@ -171,7 +172,7 @@ const HomePage: React.FC = () => {
                         format={percent}
                     />
                 </Row>
-            </Group>
+            </FoldedGroup>
         </>
     );
 };

@@ -12,6 +12,7 @@ import { getPlaybackSongKey } from '../../../utils/appPlaybackGuards';
 import { getSongArtistLabel } from '../../../services/onlineMusic/songMetadata';
 import { setPlayerState } from '../../../stores/usePlaybackStore';
 import { locatePlayingSongOnWall } from '../lattice/wallLocate';
+import { locatePlayingSong } from '../playing-song-locator/playingSongLocator';
 import { setIsDevDebugOverlayVisible, setIsMemoryMonitorVisible } from '../../../stores/useAppChromeStore';
 import type { SlotContextFromApp } from '../../FloatingPlayerControls';
 import type { PlayerControlSlotActionId } from '../../../types/playerControlSlots';
@@ -296,6 +297,8 @@ export const buildAppOverlaysModel = ({
             slotSecondary: playerControlSlotSecondary,
             slotContext: playerControlSlotContext,
             onCommitBottomBarOffset: onCommitPlayerBottomBarOffset,
+            // 定位当前播放歌曲：与墙上那颗准星同一个入口，这里把它挪到控制栏按钮组
+            onLocatePlaying: locatePlayingSong,
             trackNavigation: ((): FloatingControlsProps['trackNavigation'] => {
                 const neighbors = resolvePlaybackNeighbors({
                     playQueue,
@@ -310,6 +313,13 @@ export const buildAppOverlaysModel = ({
                     onPrev: handlePrevTrack,
                     onNext: handleNextTrack,
                     canPrev: neighbors.prev.canGo && !isNowPlayingControlDisabled,
+                    // 循环模式下第一首的上一首是最后一首，canPrev 仍是 true；
+                    // 控制栏的按钮显隐另外看这一条，满足「第一首不显示上一首」。
+                    hasPrevInQueue: (() => {
+                        if (isFmMode) return false;
+                        const index = playQueue.findIndex(song => getPlaybackSongKey(song) === getPlaybackSongKey(currentSong));
+                        return index > 0;
+                    })(),
                     canNext: neighbors.next.canGo && !isNowPlayingControlDisabled,
                     prevTitle: neighbors.prev.title,
                     nextTitle: neighbors.next.title,

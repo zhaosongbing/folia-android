@@ -311,6 +311,17 @@ export const applyImportedConfig = (config: any, keys: string[], theme: ConfigTh
     if (has('stageTrackPillTimeoutSec') && Number.isFinite(Number(config.stageTrackPillTimeoutSec))) {
         storeStageSettings.handleSetStageTrackPillTimeoutSec(Number(config.stageTrackPillTimeoutSec));
     }
+    // 高度同样是「导入时给什么就存什么」的字段，畸形值直接跳过；范围由 setter 自己钳到 56-112。
+    if (has('stageTrackPillHeightPx') && Number.isFinite(Number(config.stageTrackPillHeightPx))) {
+        storeStageSettings.handleSetStageTrackPillHeightPx(Number(config.stageTrackPillHeightPx));
+    }
+    // 位置偏移同理，0 是合法值（默认位置），所以不能用 falsy 判断，只能靠 isFinite。
+    if (has('stageTrackPillOffsetXPx') && Number.isFinite(Number(config.stageTrackPillOffsetXPx))) {
+        storeStageSettings.handleSetStageTrackPillOffsetXPx(Number(config.stageTrackPillOffsetXPx));
+    }
+    if (has('stageTrackPillOffsetYPx') && Number.isFinite(Number(config.stageTrackPillOffsetYPx))) {
+        storeStageSettings.handleSetStageTrackPillOffsetYPx(Number(config.stageTrackPillOffsetYPx));
+    }
     if (has('stageTrackPillOnHome')) {
         storeStageSettings.handleToggleStageTrackPillOnHome(Boolean(config.stageTrackPillOnHome));
     }

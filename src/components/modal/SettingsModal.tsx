@@ -1171,7 +1171,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 role="dialog"
                 aria-modal="true"
                 aria-label={t('options.settingsWindowName')}
-                className="st-window relative flex h-[90vh] w-full flex-col overflow-hidden rounded-2xl bg-[var(--st-win)] text-[color:var(--st-t1)] shadow-[0_36px_90px_rgba(0,0,0,0.5),0_0_0_1px_var(--st-line2)] md:grid md:h-[86vh] md:w-[960px] md:grid-cols-[212px_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)]"
+                className="st-window relative flex max-h-[90dvh] w-full flex-col overflow-hidden rounded-2xl bg-[var(--st-win)] text-[color:var(--st-t1)] shadow-[0_36px_90px_rgba(0,0,0,0.5),0_0_0_1px_var(--st-line2)] md:grid md:max-h-[86dvh] md:w-[960px] md:grid-cols-[212px_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)]"
                 style={{ ...settingsTokens(isDaylight, theme), ...kitMotionTokens(reducedKitMotion) }}
                 onClick={(event) => event.stopPropagation()}
             >
