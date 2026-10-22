@@ -26,6 +26,8 @@ export const SETTINGS_ANCHOR_DEFINITIONS = {
     // the Bravais group only while bravais is the one in effect.
     librarySuite: { section: 'home' },
     bravaisSettings: { section: 'home' },
+    wallChromeOffsets: { section: 'home' },
+    wallChromeSizes: { section: 'home' },
     homeTabsVisibility: { section: 'home' },
     grid3dCardStyle: { section: 'home' },
     rememberHomeCardPosition: { section: 'home' },

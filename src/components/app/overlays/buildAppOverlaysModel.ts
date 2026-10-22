@@ -12,7 +12,6 @@ import { getPlaybackSongKey } from '../../../utils/appPlaybackGuards';
 import { getSongArtistLabel } from '../../../services/onlineMusic/songMetadata';
 import { setPlayerState } from '../../../stores/usePlaybackStore';
 import { locatePlayingSongOnWall } from '../lattice/wallLocate';
-import { locatePlayingSong } from '../playing-song-locator/playingSongLocator';
 import { setIsDevDebugOverlayVisible, setIsMemoryMonitorVisible } from '../../../stores/useAppChromeStore';
 import type { SlotContextFromApp } from '../../FloatingPlayerControls';
 import type { PlayerControlSlotActionId } from '../../../types/playerControlSlots';
@@ -297,8 +296,6 @@ export const buildAppOverlaysModel = ({
             slotSecondary: playerControlSlotSecondary,
             slotContext: playerControlSlotContext,
             onCommitBottomBarOffset: onCommitPlayerBottomBarOffset,
-            // 定位当前播放歌曲：与墙上那颗准星同一个入口，这里把它挪到控制栏按钮组
-            onLocatePlaying: locatePlayingSong,
             trackNavigation: ((): FloatingControlsProps['trackNavigation'] => {
                 const neighbors = resolvePlaybackNeighbors({
                     playQueue,

@@ -997,6 +997,22 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     const kitTheme = useMemo(() => ({ isDaylight, theme }), [isDaylight, theme]);
     const prefersReducedMotion = useReducedMotionFor('settingsScroll');
     const reducedKitMotion = useKitReducedMotion();
+    // 顶部分组标签的滑动指示线（设置弹窗自己的偏好，默认显示）
+    const showTabIndicator = useSettingsModalStore(state => state.showTabIndicator);
+    // 面板的高斯模糊与不透明度（实测反馈：弹窗要毛玻璃，且两项都能在设置里调）。
+    // 模糊半径 0 = 纯色面板（回到 0.7.21.19 之前的样子）；不透明度同时作用于窗口与侧栏，
+    // 两边用同一个比例，透出来的模糊才连成一片，不会一条亮一条暗。
+    const settingsBlurPx = useSettingsModalStore(state => state.settingsBlurPx);
+    const settingsOpacityPercent = useSettingsModalStore(state => state.settingsOpacityPercent);
+    const panelGlassStyle: React.CSSProperties = {
+        backgroundColor: `color-mix(in srgb, var(--st-win) ${settingsOpacityPercent}%, transparent)`,
+        ...(settingsBlurPx > 0
+            ? { backdropFilter: `blur(${settingsBlurPx}px)`, WebkitBackdropFilter: `blur(${settingsBlurPx}px)` }
+            : {}),
+    };
+    const sideGlassStyle: React.CSSProperties = {
+        backgroundColor: `color-mix(in srgb, var(--st-side) ${settingsOpacityPercent}%, transparent)`,
+    };
     const { activeAnchorId, scrollToAnchor } = useSettingsScrollSpy({
         containerRef: contentScrollRef,
         anchors: settingsAnchors,
@@ -1171,8 +1187,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 role="dialog"
                 aria-modal="true"
                 aria-label={t('options.settingsWindowName')}
-                className="st-window relative flex max-h-[90dvh] w-full flex-col overflow-hidden rounded-2xl bg-[var(--st-win)] text-[color:var(--st-t1)] shadow-[0_36px_90px_rgba(0,0,0,0.5),0_0_0_1px_var(--st-line2)] md:grid md:max-h-[86dvh] md:w-[960px] md:grid-cols-[212px_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)]"
-                style={{ ...settingsTokens(isDaylight, theme), ...kitMotionTokens(reducedKitMotion) }}
+                className="st-window relative flex max-h-[90dvh] w-full flex-col overflow-hidden rounded-2xl text-[color:var(--st-t1)] shadow-[0_36px_90px_rgba(0,0,0,0.5),0_0_0_1px_var(--st-line2)] md:grid md:max-h-[86dvh] md:w-[960px] md:grid-cols-[212px_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)]"
+                style={{ ...settingsTokens(isDaylight, theme), ...kitMotionTokens(reducedKitMotion), ...panelGlassStyle }}
                 onClick={(event) => event.stopPropagation()}
             >
                 <SettingsKitThemeContext.Provider value={kitTheme}>
@@ -1187,9 +1203,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                             if (searchHits.length > 0) handleSelectSearchHit(searchHits[0]);
                         }}
                         isWide={isWideSettingsLayout}
+                        glassStyle={sideGlassStyle}
                     />
                     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                         <PageHeader
+                            showTabIndicator={showTabIndicator}
                             title={isSearching
                                 ? t('options.settingsSearchTitle')
                                 : activeTab === 'help' ? t('help.title') : activeSettingsNavItem?.label ?? ''}

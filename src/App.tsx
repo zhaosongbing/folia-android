@@ -144,10 +144,12 @@ import type { DoubleTapZone } from './components/app/playback/doubleTapGesture';
 import PlayerDoubleTapFeedback, { type PlayerDoubleTapCue, type PlayerGestureCueKind } from './components/app/overlays/PlayerDoubleTapFeedback';
 import PlayerLongPressHandle from './components/app/overlays/PlayerLongPressHandle';
 import AppUpdateDialog from './components/modal/AppUpdateDialog';
+import ChromeEditOverlay from './components/wall/ChromeEditOverlay';
 import ExitConfirmDialog from './components/modal/ExitConfirmDialog';
 import { moveAppToBack } from './services/appExit';
 import { useAppUpdateStore } from './stores/useAppUpdateStore';
 import { applySystemBarsVisibility } from './services/systemBars';
+import { releaseScreenWakeLock, requestScreenWakeLock, type ScreenWakeLockSentinel } from './services/screenWakeLock';
 import { selectThemeSettingsSnapshot, useThemeSettingsStore } from './stores/useThemeSettingsStore';
 import { useAutomixSettingsStore } from './stores/useAutomixSettingsStore';
 import { selectDesktopSettingsSnapshot, useDesktopSettingsStore } from './stores/useDesktopSettingsStore';
@@ -1608,17 +1610,27 @@ export default function App() {
             y: options.y,
             // 中区图标表达「即将变成什么」：正在播放时显示暂停图标，暂停时显示播放图标。
             //
-            // 状态源用 selectDisplayPlayerState —— 这是工程里约定给「对外展示」用的状态
-            // （把尾奏/加载中的 IDLE 映射成 PLAYING）。播放按钮现在也读它，
-            // 两处同源，用户看到的按钮图标与反馈图标永远一致。
-            playing: displayPlayerState === PlayerState.PLAYING,
+            // 状态源分两层，物理信号优先：
+            // 1. audioRef.current 的 paused / ended。这个 ref 只指向**当前在听的那个 deck**
+            //    （usePlaybackRuntimeRefs 的注释写明了这一点），所以不存在「另一个 deck 正在
+            //    预热导致误判」的问题 —— 上一版错在查了页面上两个 deck 的 DOM，
+            //    预热那个 paused 是 false，于是暂停被读成播放。
+            // 2. ref 拿不到（首帧、还没挂载）时退回 store 的 playerState，用 getState() 同步读，
+            //    不读 hook 值：hook 值是上次渲染的快照，切换完的那一帧还是旧的。
+            //
+            // 语义是「即将变成什么」：双击会切换播放状态，所以此刻在播就画暂停图标。
+            playing: (() => {
+                const element = audioRef.current;
+                if (element) return !element.paused && !element.ended;
+                return usePlaybackStore.getState().playerState === PlayerState.PLAYING;
+            })(),
         });
         if (doubleTapCueTimerRef.current !== null) window.clearTimeout(doubleTapCueTimerRef.current);
         doubleTapCueTimerRef.current = window.setTimeout(() => {
             setDoubleTapCue(null);
             doubleTapCueTimerRef.current = null;
         }, GESTURE_CUE_DURATION_MS[kind]);
-    }, [displayPlayerState]);
+    }, []);
     const showDoubleTapCue = useCallback((zone: DoubleTapZone, clientX: number, clientY: number) => {
         showGestureCue('zone', { zone, x: clientX, y: clientY });
     }, [showGestureCue]);
@@ -1626,38 +1638,53 @@ export default function App() {
         if (doubleTapCueTimerRef.current !== null) window.clearTimeout(doubleTapCueTimerRef.current);
     }, []);
 
+    // ---- 播放中保持屏幕常亮 ----
+    // 三个条件各自负责一件事：开关决定要不要、播放状态决定何时要、
+    // visibilitychange 负责「退到后台就交还系统」（Wake Lock 的 sentinel 在页面
+    // 隐藏时会被系统自动释放，这里补的是「回到前台时重新要回来」）。
+    const keepScreenOnWhilePlaying = usePlayerChromeSettingsStore(state => state.keepScreenOnWhilePlaying);
+    useEffect(() => {
+        if (!keepScreenOnWhilePlaying) return undefined;
+        let sentinel: ScreenWakeLockSentinel | null = null;
+        let disposed = false;
+
+        const acquire = () => {
+            if (disposed || sentinel) return;
+            void requestScreenWakeLock().then(lock => {
+                // 释放与申请竞态：期间被 dispose 过就立刻还回去
+                if (disposed) {
+                    void releaseScreenWakeLock(lock);
+                    return;
+                }
+                sentinel = lock;
+            });
+        };
+        const release = () => {
+            const current = sentinel;
+            sentinel = null;
+            void releaseScreenWakeLock(current);
+        };
+        const sync = () => {
+            const playing = usePlaybackStore.getState().playerState === PlayerState.PLAYING;
+            if (playing && document.visibilityState === 'visible') acquire();
+            else release();
+        };
+
+        sync();
+        document.addEventListener('visibilitychange', sync);
+        return () => {
+            disposed = true;
+            document.removeEventListener('visibilitychange', sync);
+            release();
+        };
+    }, [keepScreenOnWhilePlaying, displayPlayerState]);
+
     // ---- 系统栏：按设置显示/隐藏状态栏与导航栏（原生插件，浏览器里是空操作）----
     const showSystemBars = usePlayerChromeSettingsStore(state => state.showSystemBars);
     useEffect(() => {
         void applySystemBarsVisibility(showSystemBars);
     }, [showSystemBars]);
 
-    // ---- 系统返回键：有弹窗先关弹窗，否则按设置决定是否二次确认 ----
-    // 原生 MainActivity.onBackPressed() 通过 evaluateJavascript 同步调用 window.__foliaHandleBack，
-    // 返回 'handled' 表示已处理（不要退到桌面），'exit' 表示可以走。
-    const confirmOnExit = usePlayerChromeSettingsStore(state => state.confirmOnExit);
-    const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
-    useEffect(() => {
-        const handleBack = (): 'handled' | 'exit' => {
-            // 1) 有模态弹窗：派发 Escape 让它自己关（工程的模态都监听这个键）
-            if (document.querySelector('[aria-modal="true"]')) {
-                const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
-                window.dispatchEvent(event);
-                document.dispatchEvent(event);
-                return 'handled';
-            }
-            // 2) 二次确认开着：先问一句
-            if (confirmOnExit) {
-                setExitConfirmOpen(true);
-                return 'handled';
-            }
-            return 'exit';
-        };
-        (window as unknown as { __foliaHandleBack?: () => 'handled' | 'exit' }).__foliaHandleBack = handleBack;
-        return () => {
-            delete (window as unknown as { __foliaHandleBack?: () => 'handled' | 'exit' }).__foliaHandleBack;
-        };
-    }, [confirmOnExit]);
 
     // ---- 在线更新：启动后延迟几秒检查一次，有新版本就弹窗 ----
     // 延迟是为了不和首屏动画、封面加载抢网络；检查本身很轻（一个 releases/latest 请求）。
@@ -1983,6 +2010,79 @@ export default function App() {
             || Boolean(pendingUnavailableReplacement),
         context: commandPaletteContext,
     });
+    // ---- 系统返回键：按「离用户最近的一层」逐级关闭，都没开才考虑退出 ----
+    //
+    // 原生侧（MainActivity）在 API 33+ 用 OnBackInvokedDispatcher 注册回调 —— targetSdk 是 36，
+    // 系统走预测式返回、**不再调用 onBackPressed**，上一版把逻辑写在 onBackPressed 里所以整条链路是死的。
+    // 回调里 evaluateJavascript 同步执行 window.__foliaHandleBack()，返回 'handled'（已处理，
+    // 别退桌面）或 'exit'（可以走）。
+    //
+    // 这里逐级调关闭函数而不是一律派发 Escape：工程里的浮层有的监听 Escape、有的不监听
+    // （更新弹窗、退出确认框都不监听），只发 Escape 就会出现「按了返回没反应」。
+    const confirmOnExit = usePlayerChromeSettingsStore(state => state.confirmOnExit);
+    const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
+    useEffect(() => {
+        const handleBack = (): 'handled' | 'exit' => {
+            // 1) 退出确认框自己开着：先关它，别再叠一个
+            if (exitConfirmOpen) {
+                setExitConfirmOpen(false);
+                return 'handled';
+            }
+            // 2) 更新弹窗
+            if (availableUpdate) {
+                dismissUpdate();
+                return 'handled';
+            }
+            // 3) 设置弹窗
+            if (isSettingsModalOpen) {
+                useSettingsModalStore.getState().closeSettings();
+                return 'handled';
+            }
+            // 4) 命令面板
+            if (commandPalette.isOpen) {
+                commandPalette.close();
+                return 'handled';
+            }
+            // 5) 播放列表 / 面板
+            if (isPanelOpen) {
+                setIsPanelOpen(false);
+                return 'handled';
+            }
+            // 6) 其余自绘弹窗：派发 Escape 让它自己收
+            if (document.querySelector('[aria-modal="true"]')) {
+                const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+                window.dispatchEvent(event);
+                document.dispatchEvent(event);
+                return 'handled';
+            }
+            // 7) 播放页：按返回回主页，不退出应用
+            //    用户明确要求「播放页和 bravais 墙按返回回到主页，不退到桌面」。
+            //    放在弹窗之后：弹窗开着时先关弹窗，和系统返回键的通常语义一致。
+            if (currentView === 'player') {
+                navigateBackFromPlayer();
+                return 'handled';
+            }
+            // 8) bravais 墙的非根层（集合页 / 表单 / 面板）：按返回退回上一层。
+            //    墙没有把「返回」暴露成命令，缝里那颗 ‹ 是唯一的入口，所以这里直接触发它。
+            //    程序触发 click 不受 visibility 影响，缝收起时同样有效。
+            const seamBack = document.querySelector<HTMLButtonElement>('[data-bravais-seam-action="back"]');
+            if (seamBack) {
+                seamBack.click();
+                return 'handled';
+            }
+            // 9) 什么都没开：按设置决定要不要问一句
+            if (confirmOnExit) {
+                setExitConfirmOpen(true);
+                return 'handled';
+            }
+            return 'exit';
+        };
+        (window as unknown as { __foliaHandleBack?: () => 'handled' | 'exit' }).__foliaHandleBack = handleBack;
+        return () => {
+            delete (window as unknown as { __foliaHandleBack?: () => 'handled' | 'exit' }).__foliaHandleBack;
+        };
+    }, [availableUpdate, commandPalette, confirmOnExit, currentView, dismissUpdate, exitConfirmOpen, isPanelOpen, isSettingsModalOpen, navigateBackFromPlayer, setIsPanelOpen]);
+
     // The FM tab reuses the palette's picker instead of carrying its own copy of the mode list.
     // Read through a ref rather than depended on: openCommandById tracks the palette's isExecuting
     // flag, so depending on it would rebuild the player panel model on unrelated renders. The
@@ -3054,6 +3154,9 @@ export default function App() {
             />
 
             {/* 返回键二次确认：点确定才真的退到桌面 */}
+            {/* 浮层位置的手动调整层：只在「拖动调整位置」开着时出现 */}
+            <ChromeEditOverlay />
+
             <ExitConfirmDialog
                 open={exitConfirmOpen}
                 onCancel={() => setExitConfirmOpen(false)}

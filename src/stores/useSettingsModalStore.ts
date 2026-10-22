@@ -38,6 +38,20 @@ export type SettingsModalState = {
 
 // Separate from the retired guide key so people who saw the old carousel still receive the Ponder lesson.
 const LAST_SEEN_GUIDE_VERSION_STORAGE_KEY = 'folia_last_seen_ponder_onboarding_version';
+/** 设置弹窗顶部分组标签下方那条滑动指示线的显隐。 */
+const SETTINGS_TAB_INDICATOR_KEY = 'settings_tab_indicator';
+/** 设置弹窗的高斯模糊：模糊半径（px）与面板不透明度（%）。 */
+const SETTINGS_BLUR_PX_KEY = 'settings_modal_blur_px';
+const SETTINGS_OPACITY_KEY = 'settings_modal_opacity';
+
+/** 模糊半径的调节范围与默认值。0 = 不模糊（纯色面板）。 */
+export const SETTINGS_BLUR_MIN_PX = 0;
+export const SETTINGS_BLUR_MAX_PX = 40;
+export const SETTINGS_BLUR_DEFAULT_PX = 18;
+/** 面板不透明度的调节范围与默认值（%）。越低越透，模糊背后越明显。 */
+export const SETTINGS_OPACITY_MIN_PERCENT = 40;
+export const SETTINGS_OPACITY_MAX_PERCENT = 100;
+export const SETTINGS_OPACITY_DEFAULT_PERCENT = 86;
 
 export type SettingsModalUiState = {
     appLanguagePreference: AppLanguagePreference;
@@ -46,7 +60,16 @@ export type SettingsModalUiState = {
     settingsModalState: SettingsModalState;
     lastSeenGuideVersion: string | null;
     isUserGuideModalOpen: boolean;
+    /** 设置弹窗顶部分组标签的滑动指示线，默认显示。 */
+    showTabIndicator: boolean;
+    /** 设置弹窗面板的高斯模糊半径（px），0 为不模糊。 */
+    settingsBlurPx: number;
+    /** 设置弹窗面板的不透明度（%），配合模糊决定背后透出多少。 */
+    settingsOpacityPercent: number;
     setLastSeenGuideVersion: (version: string) => void;
+    setShowTabIndicator: (show: boolean) => void;
+    setSettingsBlurPx: (px: number) => void;
+    setSettingsOpacityPercent: (percent: number) => void;
     setIsUserGuideModalOpen: (isOpen: boolean) => void;
     setIsSubSettingsViewOpen: (open: boolean) => void;
     openSettings: (
@@ -59,6 +82,40 @@ export type SettingsModalUiState = {
     closeSettings: () => void;
     handleSetAppLanguagePreference: (preference: AppLanguagePreference) => Promise<void>;
     setPinnedCommandId: (slotIndex: number, commandId: string | null) => void;
+};
+
+const readStoredTabIndicator = (): boolean => {
+    if (typeof localStorage === 'undefined') return true;
+    try {
+        return localStorage.getItem(SETTINGS_TAB_INDICATOR_KEY) !== 'off';
+    } catch {
+        return true;
+    }
+};
+
+const clampInt = (value: number, min: number, max: number, fallback: number): number => {
+    if (!Number.isFinite(value)) return fallback;
+    return Math.max(min, Math.min(max, Math.round(value)));
+};
+
+const readStoredBlurPx = (): number => {
+    if (typeof localStorage === 'undefined') return SETTINGS_BLUR_DEFAULT_PX;
+    try {
+        const raw = Number.parseInt(localStorage.getItem(SETTINGS_BLUR_PX_KEY) ?? '', 10);
+        return clampInt(raw, SETTINGS_BLUR_MIN_PX, SETTINGS_BLUR_MAX_PX, SETTINGS_BLUR_DEFAULT_PX);
+    } catch {
+        return SETTINGS_BLUR_DEFAULT_PX;
+    }
+};
+
+const readStoredOpacityPercent = (): number => {
+    if (typeof localStorage === 'undefined') return SETTINGS_OPACITY_DEFAULT_PERCENT;
+    try {
+        const raw = Number.parseInt(localStorage.getItem(SETTINGS_OPACITY_KEY) ?? '', 10);
+        return clampInt(raw, SETTINGS_OPACITY_MIN_PERCENT, SETTINGS_OPACITY_MAX_PERCENT, SETTINGS_OPACITY_DEFAULT_PERCENT);
+    } catch {
+        return SETTINGS_OPACITY_DEFAULT_PERCENT;
+    }
 };
 
 export const useSettingsModalStore = create<SettingsModalUiState>((set, get) => ({
@@ -74,6 +131,9 @@ export const useSettingsModalStore = create<SettingsModalUiState>((set, get) => 
     },
     lastSeenGuideVersion: typeof window !== 'undefined' ? localStorage.getItem(LAST_SEEN_GUIDE_VERSION_STORAGE_KEY) : null,
     isUserGuideModalOpen: false,
+    showTabIndicator: readStoredTabIndicator(),
+    settingsBlurPx: readStoredBlurPx(),
+    settingsOpacityPercent: readStoredOpacityPercent(),
     setLastSeenGuideVersion: (version) => {
         if (typeof window !== 'undefined') {
             localStorage.setItem(LAST_SEEN_GUIDE_VERSION_STORAGE_KEY, version);
@@ -97,6 +157,32 @@ export const useSettingsModalStore = create<SettingsModalUiState>((set, get) => 
                 : null,
         },
     }),
+    setShowTabIndicator: (show) => {
+        set({ showTabIndicator: show });
+        try {
+            localStorage.setItem(SETTINGS_TAB_INDICATOR_KEY, show ? 'on' : 'off');
+        } catch {
+            // 隐私模式下写不进去，本次会话仍然生效
+        }
+    },
+    setSettingsBlurPx: (px) => {
+        const clamped = clampInt(px, SETTINGS_BLUR_MIN_PX, SETTINGS_BLUR_MAX_PX, SETTINGS_BLUR_DEFAULT_PX);
+        set({ settingsBlurPx: clamped });
+        try {
+            localStorage.setItem(SETTINGS_BLUR_PX_KEY, String(clamped));
+        } catch {
+            // 存储写不进去时至少让本次会话生效
+        }
+    },
+    setSettingsOpacityPercent: (percent) => {
+        const clamped = clampInt(percent, SETTINGS_OPACITY_MIN_PERCENT, SETTINGS_OPACITY_MAX_PERCENT, SETTINGS_OPACITY_DEFAULT_PERCENT);
+        set({ settingsOpacityPercent: clamped });
+        try {
+            localStorage.setItem(SETTINGS_OPACITY_KEY, String(clamped));
+        } catch {
+            // 存储写不进去时至少让本次会话生效
+        }
+    },
     closeSettings: () => set(state => ({
         settingsModalState: {
             ...state.settingsModalState,

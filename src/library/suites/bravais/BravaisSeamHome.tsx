@@ -14,6 +14,7 @@ import {
     MicVocal,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useWallChromeOffsetStore } from '../../../stores/useWallChromeOffsetStore';
 import type { BravaisLayer, BravaisSeamTab } from './bravaisLayer';
 import type { BravaisHomeAccount, BravaisHomeSection, BravaisHomeShortcut } from './bravaisHomeModels';
 import type { BravaisSeamLevel } from './bravaisSeamLevel';
@@ -221,6 +222,10 @@ const HomeSeamHead: React.FC<{
     onSelectTab?: (key: string) => void;
     measure?: boolean;
 }> = ({ title, hideTitle, tabs, shorts, lead, onSelectTab, measure = false }) => {
+    // 信息条上部分的位移由 bravais.css 读 .bravais-seam-content 上的 CSS 变量统一处理，
+    // 这里不再自己算 inline transform —— 各变体各算一套，总有漏的（集合页就漏过）。
+    // measure 那次只量尺寸，不参与位移：CSS 规则照样生效，但量的是变换后的位置，
+    // 对布局没有影响（head 是流内元素，位移不改变它占的空间）。
     return (
         <div className="bravais-seam-home-head">
             <div className={`bravais-seam-home-title${hideTitle ? ' is-hidden' : ''}`} data-bravais-home-title={measure ? undefined : hideTitle ? 'hidden' : 'shown'}>

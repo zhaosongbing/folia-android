@@ -87,6 +87,7 @@ const O = {
     barRadius: option(PLAYER_UI, 'playerBarRadius', 'options.playerBarRadius'),
     titleTrackArrows: option(PLAYER_UI, 'showTitleTrackArrows', 'options.showTitleTrackArrows'),
     barClickToExpand: option(PLAYER_UI, 'playerBarClickToExpand', 'options.playerBarClickToExpand'),
+    keepScreenOn: option(PLAYER_UI, 'keepScreenOnWhilePlaying', 'options.keepScreenOnWhilePlaying'),
 };
 
 export const OPTIONS: SettingsOptionDef[] = Object.values(O);
@@ -152,6 +153,8 @@ const PlayerPage: React.FC = () => {
         setBarRadius: state.handleSetPlayerBarRadiusPx,
         setTitleTrackArrows: state.handleToggleTitleTrackArrows,
         setBarClickToExpand: state.handleTogglePlayerBarClickToExpand,
+        setKeepScreenOn: state.handleToggleKeepScreenOn,
+        keepScreenOn: state.keepScreenOnWhilePlaying,
         setCardCloseButton: state.handleToggleOpenPanelCloseButton,
     })));
     const card = useStageSettingsStore(useShallow(state => ({
@@ -526,6 +529,9 @@ const PlayerPage: React.FC = () => {
                 </Row>
                 <Row option={O.barClickToExpand} note={t('options.playerBarClickToExpandDesc')}>
                     <Toggle checked={chrome.barClickToExpand} onChange={chrome.setBarClickToExpand} />
+                </Row>
+                <Row option={O.keepScreenOn} note={t('options.keepScreenOnWhilePlayingDesc')}>
+                    <Toggle checked={chrome.keepScreenOn} onChange={chrome.setKeepScreenOn} />
                 </Row>
             </FoldedGroup>
         </>

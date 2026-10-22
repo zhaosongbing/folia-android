@@ -6,6 +6,7 @@ import WallBackButton from '../../../components/wall/WallBackButton';
 import WallToolsButton from '../../../components/wall/WallToolsButton';
 import type { WallToolsEntry, WallToolsQuickAction } from '../../../components/wall/WallToolsRows';
 import { useLibraryWallLookStore } from '../../../stores/useLibraryWallLookStore';
+import { useWallChromeOffsetStore } from '../../../stores/useWallChromeOffsetStore';
 import { usePlaybackStore } from '../../../stores/usePlaybackStore';
 import { usePlayingSongLocatorStore } from '../../../stores/usePlayingSongLocatorStore';
 import { PRIMARY_MODIFIER_LABEL } from '../../../utils/platform';
@@ -58,6 +59,10 @@ const BravaisStageChrome: React.FC<BravaisStageChromeProps> = ({
     toolsClaimed = true,
 }) => {
     const { t } = useTranslation();
+    // 定位 / 工具按钮可以整个关掉（设置里两个开关）；关掉后按钮不渲染，
+    // 位置与大小的设置仍然保留，重新打开时回到原来的地方。
+    const showLocateButton = useWallChromeOffsetStore(state => state.showLocateButton);
+    const showToolsButton = useWallChromeOffsetStore(state => state.showToolsButton);
     const look = useLibraryWallLookStore(state => state.look);
     const setLook = useLibraryWallLookStore(state => state.setLook);
     const isFmMode = usePlaybackStore(state => state.isFmMode);
@@ -100,12 +105,13 @@ const BravaisStageChrome: React.FC<BravaisStageChromeProps> = ({
                     concealed
                 />
             )}
+            {showToolsButton && (
             <WallToolsButton
                 idPrefix="bravais-tools"
                 label={t('libraryBravais.tools')}
                 claimed={toolsClaimed}
                 isDaylight={isDaylight}
-                above={locatePlaying ? (
+                above={showLocateButton && locatePlaying ? (
                     <GridLocateButton
                         isDaylight={isDaylight}
                         accentColor="var(--text-accent)"
@@ -124,6 +130,7 @@ const BravaisStageChrome: React.FC<BravaisStageChromeProps> = ({
                     </li>
                 ))}
             />
+            )}
         </>
     );
 };

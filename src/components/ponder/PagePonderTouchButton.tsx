@@ -10,6 +10,7 @@ import { openCurrentPagePonder } from '../../services/ponder/pagePonderTarget';
 import type { Theme } from '../../types';
 import { ponderMotionTokens } from './ponderMotion';
 import { ponderLayerTokens, ponderWindowTokens } from './ponderTheme';
+import { scaledPx, useWallChromeOffsetStore, WALL_CHROME_SCALE_DEFAULT_PERCENT } from '../../stores/useWallChromeOffsetStore';
 
 // src/components/ponder/PagePonderTouchButton.tsx
 // 触屏上代替 Ctrl+G 的入口。
@@ -27,8 +28,12 @@ import { ponderLayerTokens, ponderWindowTokens } from './ponderTheme';
 /** 露出来之后停留多久。够读一眼，又不至于一直杵在那里。 */
 const REVEAL_MS = 4000;
 
-/** 右上角热区的边长，px。按触摸目标给，不按视觉尺寸给。 */
-const HOTSPOT_SIZE_PX = 96;
+/** 右上角热区在按钮四周各留出的缓冲，px。手指不必精确命中那颗圆。 */
+const HOTSPOT_PAD_PX = 48;
+/** 按钮的基准位置与直径，与原来写死的 right-5 / top-5 / h-12 w-12 一致。 */
+const PONDER_BUTTON_BASE_RIGHT_PX = 20;
+const PONDER_BUTTON_BASE_TOP_PX = 20;
+const PONDER_BUTTON_BASE_SIZE_PX = 48;
 
 type PagePonderTouchButtonProps = {
     theme?: Theme;
@@ -44,6 +49,35 @@ const PagePonderTouchButton: React.FC<PagePonderTouchButtonProps> = ({ theme, is
     const isOnboardingOpen = useSettingsModalStore(state => state.isUserGuideModalOpen);
     const showTouchButton = usePonderStore(state => state.showPonderTouchButton);
     const view = useAppViewStore(state => state.view);
+    // 位置与大小都可自定义（与左上角返回、右下角两颗同一套设置）。
+    // 横向用 right、纵向用 top：这颗是 fixed 定位，两个方向都从各自的边缘量。
+    const ponderOffset = useWallChromeOffsetStore(state => state.offsets.ponder);
+    const ponderScale = useWallChromeOffsetStore(state => state.scale);
+    const ponderSizePx = scaledPx(PONDER_BUTTON_BASE_SIZE_PX, ponderScale);
+    // 先算成两个数：CSSProperties 的 right/top 类型里带 undefined，
+    // 下面热区要拿它们做减法，直接读 ponderChrome.right 会踩 strict 的 undefined 报错。
+    const ponderRightPx = PONDER_BUTTON_BASE_RIGHT_PX - ponderOffset.x;
+    const ponderTopPx = PONDER_BUTTON_BASE_TOP_PX + ponderOffset.y;
+    const ponderChrome: React.CSSProperties = {
+        right: ponderRightPx,
+        top: ponderTopPx,
+        ...(ponderScale !== WALL_CHROME_SCALE_DEFAULT_PERCENT
+            ? { width: ponderSizePx, height: ponderSizePx }
+            : {}),
+    };
+    // 热区跟着按钮走：位置和尺寸变了还按右上角 96px 判，按钮就被挪出了自己的热区，
+    // 收起后再也点不回来。所以这里按「实际位置 + 尺寸 + 缓冲」现算。
+    const ponderHotspot = () => {
+        if (typeof window === 'undefined') return { left: 0, top: 0, right: 0, bottom: 0 };
+        const left = window.innerWidth - ponderRightPx - ponderSizePx;
+        const top = ponderTopPx;
+        return {
+            left: left - HOTSPOT_PAD_PX,
+            top,
+            right: left + ponderSizePx + HOTSPOT_PAD_PX,
+            bottom: top + ponderSizePx + HOTSPOT_PAD_PX,
+        };
+    };
 
     const [isRevealed, setIsRevealed] = useState(true);
     const hideTimerRef = useRef<number | null>(null);
@@ -96,8 +130,10 @@ const PagePonderTouchButton: React.FC<PagePonderTouchButtonProps> = ({ theme, is
                 return;
             }
 
-            const inHotspot = event.clientY <= HOTSPOT_SIZE_PX
-                && event.clientX >= window.innerWidth - HOTSPOT_SIZE_PX;
+            const zone = ponderHotspot();
+            const inHotspot = event.clientX >= zone.left
+                && event.clientX <= zone.right
+                && event.clientY <= zone.bottom;
             if (!inHotspot) {
                 // 手指落在别处，上一面没用掉的旗就作废 —— 免得它留到下一次真正的点击上。
                 suppressNextClickRef.current = false;
@@ -132,16 +168,16 @@ const PagePonderTouchButton: React.FC<PagePonderTouchButtonProps> = ({ theme, is
             aria-label={t('ponder.openPage')}
             // 收起来之后不可点：留着可点的话，右上角会变成一块看不见却能按的地方。
             // 出来时淡入、从略小长到位；关了微动效就只淡入淡出。
-            className={`fixed right-5 top-5 z-[190] h-12 w-12 rounded-full transition-[opacity,transform] active:scale-95 ${
+            className={`fixed z-[190] rounded-full transition-[opacity,transform] active:scale-95 ${
                 isRevealed ? 'pd-t-enter opacity-100' : `pd-t-base pointer-events-none opacity-0 ${calm ? '' : 'scale-[0.94]'}`
             }`}
-            style={{ ...ponderLayerTokens(isDaylight, theme), ...ponderMotionTokens(calm) }}
+            style={{ ...ponderLayerTokens(isDaylight, theme), ...ponderMotionTokens(calm), ...ponderChrome }}
         >
             <span
                 className="grid h-full w-full place-items-center rounded-full bg-[var(--st-card)] text-[color:var(--st-t1)] shadow-[0_0_0_1px_var(--st-line),0_8px_20px_rgba(0,0,0,0.25)]"
                 style={ponderWindowTokens(isDaylight, theme, calm)}
             >
-                <Lightbulb size={20} aria-hidden="true" />
+                <Lightbulb size={Math.round((20 * ponderScale) / 100)} aria-hidden="true" />
             </span>
         </button>
     );

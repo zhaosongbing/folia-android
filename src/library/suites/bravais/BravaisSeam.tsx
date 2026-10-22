@@ -9,6 +9,7 @@ import type { BravaisPanelActions } from './BravaisListPanel';
 import BravaisSeamContent from './BravaisSeamContent';
 import { BravaisSeamNavigation } from './BravaisSeamCrumbs';
 import type { LibraryNavigationContext } from '../../core/suite/suite.contract';
+import { useWallChromeOffsetStore } from '../../../stores/useWallChromeOffsetStore';
 
 // src/library/suites/bravais/BravaisSeam.tsx
 // 缝与它的边缘标签。缝的屏幕位置、宽度、内容透明度、标签显隐都由 stage 每帧直接写（bravaisFrame），这里只在
@@ -64,6 +65,19 @@ const BravaisSeam: React.FC<BravaisSeamProps> = ({
     openShortcut,
 }) => {
     const { t } = useTranslation();
+    // 信息条上 / 下部分的位移：只写 CSS 变量，真正的 transform 在 bravais.css 里。
+    // 写在 content 上而不是各个变体各自算 inline —— 集合页之前就是漏了，
+    // inline 只加在 FullSeam 上，切到别的层位就不动，用户看到的就是「没反应」。
+    const seamHeadOffset = useWallChromeOffsetStore(state => state.offsets.seamHead);
+    const seamDockOffset = useWallChromeOffsetStore(state => state.offsets.seamDock);
+    const seamOffsetVars = (
+        seamHeadOffset.x !== 0 || seamHeadOffset.y !== 0 || seamDockOffset.x !== 0 || seamDockOffset.y !== 0
+    ) ? {
+        '--seam-head-x': `${seamHeadOffset.x}px`,
+        '--seam-head-y': `${seamHeadOffset.y}px`,
+        '--seam-dock-x': `${seamDockOffset.x}px`,
+        '--seam-dock-y': `${seamDockOffset.y}px`,
+    } as React.CSSProperties : null;
     const width = contentWidth;
     const tabLabel = currentLayer?.seam.title ?? '';
     const hideLeaving = leaving;
@@ -81,7 +95,11 @@ const BravaisSeam: React.FC<BravaisSeamProps> = ({
                 aria-label={t('libraryBravais.seamLabel')}
                 role="region"
             >
-                <div ref={contentRef} className="bravais-seam-content" style={{ width, marginLeft: -width / 2 }}>
+                <div
+                    ref={contentRef}
+                    className="bravais-seam-content"
+                    style={{ width, marginLeft: -width / 2, ...seamOffsetVars }}
+                >
                     <motion.div
                         className="bravais-seam-body"
                         style={{ paddingBottom: bottomPx }}

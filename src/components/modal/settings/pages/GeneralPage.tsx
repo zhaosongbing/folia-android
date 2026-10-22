@@ -8,8 +8,8 @@ import { useAudioSettingsStore } from '../../../../stores/useAudioSettingsStore'
 import { usePlayerChromeSettingsStore } from '../../../../stores/usePlayerChromeSettingsStore';
 import { useAppUpdateStore } from '../../../../stores/useAppUpdateStore';
 import { selectPonderSettingsSnapshot, usePonderStore } from '../../../../stores/usePonderStore';
-import { useSettingsModalStore } from '../../../../stores/useSettingsModalStore';
-import { Button, FoldedGroup, Reveal, Row, Segmented, Select, Toggle, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
+import { useSettingsModalStore, SETTINGS_BLUR_MAX_PX, SETTINGS_BLUR_MIN_PX, SETTINGS_OPACITY_MAX_PERCENT, SETTINGS_OPACITY_MIN_PERCENT } from '../../../../stores/useSettingsModalStore';
+import { Button, FoldedGroup, Reveal, Row, Segmented, Select, Slider, Toggle, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
 import { FoundUpdateRow } from './FoundUpdateRow';
 import { useSettingsPage } from './settingsPageContext';
 
@@ -31,6 +31,9 @@ const O = {
     openPlayer: option(LAUNCH, 'openPlayerOnLaunch', 'options.openPlayerOnLaunch', { electronOnly: true }),
     titlebarButtons: option(LAUNCH, 'alwaysShowMainWindowTitlebar', 'options.alwaysShowMainWindowTitlebar'),
     systemBars: option(LAUNCH, 'showSystemBars', 'options.showSystemBars'),
+    tabIndicator: option(LAUNCH, 'showTabIndicator', 'options.showTabIndicator'),
+    settingsBlur: option(LAUNCH, 'settingsModalBlur', 'options.settingsModalBlur'),
+    settingsOpacity: option(LAUNCH, 'settingsModalOpacity', 'options.settingsModalOpacity'),
     confirmOnExit: option(LAUNCH, 'confirmOnExit', 'options.confirmOnExit'),
     updateCheck: option(UPDATE, 'enableUpdateCheck', 'options.enableUpdateCheck'),
     autoUpdate: option(UPDATE, 'enableAutoUpdate', 'options.enableAutoUpdate'),
@@ -58,6 +61,14 @@ const GeneralPage: React.FC = () => {
     // 系统栏开关只在原生端有意义（浏览器里没有系统栏可显示）。
     const showSystemBars = usePlayerChromeSettingsStore(state => state.showSystemBars);
     const setShowSystemBars = usePlayerChromeSettingsStore(state => state.handleToggleSystemBars);
+    // 设置弹窗自己的偏好（滑动指示线），放在设置 store 而不是播放页 chrome store
+    const showTabIndicator = useSettingsModalStore(state => state.showTabIndicator);
+    const setShowTabIndicator = useSettingsModalStore(state => state.setShowTabIndicator);
+    // 设置弹窗的毛玻璃：模糊半径与面板不透明度（实测反馈）
+    const settingsBlurPx = useSettingsModalStore(state => state.settingsBlurPx);
+    const setSettingsBlurPx = useSettingsModalStore(state => state.setSettingsBlurPx);
+    const settingsOpacityPercent = useSettingsModalStore(state => state.settingsOpacityPercent);
+    const setSettingsOpacityPercent = useSettingsModalStore(state => state.setSettingsOpacityPercent);
     const confirmOnExit = usePlayerChromeSettingsStore(state => state.confirmOnExit);
     const setConfirmOnExit = usePlayerChromeSettingsStore(state => state.handleToggleConfirmOnExit);
     // 在线更新：开关、来源与最近一次检查结果都在这个 store 里，启动时的自动检查也读同一份。
@@ -134,6 +145,29 @@ const GeneralPage: React.FC = () => {
                         <Toggle checked={confirmOnExit} onChange={setConfirmOnExit} />
                     </Row>
                 )}
+                <Row option={O.tabIndicator} note={t('options.showTabIndicatorDesc')}>
+                    <Toggle checked={showTabIndicator} onChange={setShowTabIndicator} />
+                </Row>
+                {/* 毛玻璃两项：模糊 0 = 纯色面板；不透明度同时作用于窗口与侧栏。
+                    滑杆改的是「此刻预览」——弹窗本身就是设置窗口，拖一下就能看到效果。 */}
+                <Row option={O.settingsBlur} note={t('options.settingsModalBlurDesc')}>
+                    <Slider
+                        value={settingsBlurPx}
+                        min={SETTINGS_BLUR_MIN_PX}
+                        max={SETTINGS_BLUR_MAX_PX}
+                        onChange={setSettingsBlurPx}
+                        format={value => (value === 0 ? t('options.settingsModalBlurOff') : `${value}px`)}
+                    />
+                </Row>
+                <Row option={O.settingsOpacity} note={t('options.settingsModalOpacityDesc')}>
+                    <Slider
+                        value={settingsOpacityPercent}
+                        min={SETTINGS_OPACITY_MIN_PERCENT}
+                        max={SETTINGS_OPACITY_MAX_PERCENT}
+                        onChange={setSettingsOpacityPercent}
+                        format={value => `${value}%`}
+                    />
+                </Row>
             </FoldedGroup>
 
             <FoldedGroup def={APP_UPDATE} summary={t('appUpdate.currentVersionShort', { version: appUpdate.currentVersion })}>

@@ -29,11 +29,16 @@ type TabsProps = {
     contents?: boolean;
     /** What the tabs choose, for a screen reader. */
     label?: string;
+    /**
+     * 选中项下方那条会滑动的横线。默认显示；设置弹窗里可以关掉（见 showTabIndicator）。
+     * 只影响这条线：选中态本身仍由文字颜色与加粗表达，关掉不会丢状态。
+     */
+    showIndicator?: boolean;
     /** The padding around the tabs. */
     className?: string;
 };
 
-export const Tabs: React.FC<TabsProps> = ({ tabs, activeId, onSelect, action, contents, label, className = '' }) => {
+export const Tabs: React.FC<TabsProps> = ({ tabs, activeId, onSelect, action, contents, label, className = '', showIndicator = true }) => {
     const reduced = useKitReducedMotion();
     const stripRef = useRef<HTMLDivElement>(null);
     const activeRef = useRef<HTMLButtonElement>(null);
@@ -97,7 +102,7 @@ export const Tabs: React.FC<TabsProps> = ({ tabs, activeId, onSelect, action, co
                         >
                             {tab.label}
                             {tab.dot && <span aria-hidden className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-[var(--st-warn)] align-middle" />}
-                            {current && (
+                            {current && showIndicator && (
                                 // One line shared by the tabs: framer-motion moves it to the new one,
                                 // and only when the choice changes.
                                 <motion.span

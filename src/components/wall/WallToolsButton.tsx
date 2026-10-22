@@ -11,6 +11,7 @@ import { WallToolsQuickRow, WallToolsRow, type WallToolsEntry, type WallToolsQui
 import { useWallToolsCommonActions } from './useWallToolsCommonActions';
 import { WallToolsQueueIsland } from './WallToolsQueueIsland';
 import { useWallToolsHost } from './wallToolsHost';
+import { scaledPx, useWallChromeOffsetStore, WALL_CHROME_SCALE_DEFAULT_PERCENT } from '../../stores/useWallChromeOffsetStore';
 import './WallToolsButton.css';
 
 // src/components/wall/WallToolsButton.tsx
@@ -93,6 +94,19 @@ export function WallToolsSurface({ idPrefix, label, isDaylight, destination, ent
     const handleToggleLatticePosterTint = useLatticeSettingsStore(state => state.handleToggleLatticePosterTint);
     const isWideLayout = useMediaQuery('(min-width: 640px)');
     const bottomPx = usePlayerBottomBarBottomPx(isWideLayout ? 24 : 16);
+    // 位置微调：这颗按钮是 absolute + right/bottom 定位的，用负 margin 把最终位置推开
+    // （margin-right 负 = 往右，margin-bottom 负 = 往下），不去碰 bottom 那个 MotionValue
+    // ——底栏抬升还在往它上面叠，覆盖掉就等于把底栏避让也一起废了。
+    const toolsOffset = useWallChromeOffsetStore(state => state.offsets.wallTools);
+    const toolsNudge = toolsOffset.x !== 0 || toolsOffset.y !== 0
+        ? { marginRight: -toolsOffset.x, marginBottom: -toolsOffset.y }
+        : null;
+    // 按钮尺寸（SlideActionButton 的轨道、填充、图标都会等比缩放，不会出现「容器变大、
+    // 滑轨还是老长度」）。面板与浮岛的宽度不受它影响：那是另一组宽度变量。
+    const toolsScale = useWallChromeOffsetStore(state => state.scale);
+    const toolsSizePx = toolsScale !== WALL_CHROME_SCALE_DEFAULT_PERCENT
+        ? scaledPx(48, toolsScale)
+        : undefined;
     // stack 的 max-height 要减掉按钮此刻的底距（随底栏抬升量变），经 CSS 变量交给样式。
     const bottomVar = useTransform(bottomPx, value => `${value}px`);
     const host = useWallToolsHost();
@@ -159,7 +173,11 @@ export function WallToolsSurface({ idPrefix, label, isDaylight, destination, ent
     return (
         <motion.div
             ref={rootRef}
-            style={{ bottom: bottomPx, '--wall-tools-bottom': bottomVar } as unknown as MotionStyle}
+            style={{
+                bottom: bottomPx,
+                '--wall-tools-bottom': bottomVar,
+                ...toolsNudge,
+            } as unknown as MotionStyle}
             className={`lattice-tools group ${above ? 'has-above' : ''} ${isDaylight ? 'is-daylight' : ''}`}
         >
             {/* 面板与队列浮岛叠在按钮上方的一列里（column-reverse：面板在下、浮岛在上）：定位在 stack 上，面板自己不再 absolute。 */}
@@ -246,6 +264,7 @@ export function WallToolsSurface({ idPrefix, label, isDaylight, destination, ent
                 isDaylight={isDaylight}
                 accentColor="var(--text-accent)"
                 accentForeground="var(--text-on-accent, #ffffff)"
+                sizePx={toolsSizePx}
             />
         </motion.div>
     );

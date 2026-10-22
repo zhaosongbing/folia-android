@@ -133,6 +133,8 @@ export type PlayerChromeSettingsState = {
     showSystemBars: boolean;
     /** 按系统返回键退出前先确认一次。默认开。 */
     confirmOnExit: boolean;
+    /** 播放中保持屏幕常亮，暂停或退到后台后交还系统。默认关。 */
+    keepScreenOnWhilePlaying: boolean;
     showOpenPanelCloseButton: boolean;
     setTransparentPlayerBackgroundFromSystem: (enabled: boolean) => void;
     handleTogglePlayerPageNativeBlur: (enable: boolean) => void;
@@ -162,6 +164,7 @@ export type PlayerChromeSettingsState = {
     handleTogglePlayerBarClickToExpand: (enable: boolean) => void;
     handleToggleSystemBars: (enable: boolean) => void;
     handleToggleConfirmOnExit: (enable: boolean) => void;
+    handleToggleKeepScreenOn: (enable: boolean) => void;
     handleToggleOpenPanelCloseButton: (enable: boolean) => void;
 };
 
@@ -209,6 +212,7 @@ export const usePlayerChromeSettingsStore = create<PlayerChromeSettingsState>((s
     playerBarClickToExpand: getStoredBoolean('player_bar_click_to_expand', false),
     showSystemBars: getStoredBoolean('show_system_bars', false),
     confirmOnExit: getStoredBoolean('confirm_on_exit', true),
+    keepScreenOnWhilePlaying: getStoredBoolean('keep_screen_on_while_playing', false),
     showOpenPanelCloseButton: getStoredBoolean('show_open_panel_close_button', true),
     setTransparentPlayerBackgroundFromSystem: (enabled) => {
         setStoredBoolean('transparent_player_background', enabled);
@@ -319,6 +323,10 @@ export const usePlayerChromeSettingsStore = create<PlayerChromeSettingsState>((s
     handleToggleConfirmOnExit: (enable) => {
         setStoredBoolean('confirm_on_exit', enable);
         set({ confirmOnExit: enable });
+    },
+    handleToggleKeepScreenOn: (enable) => {
+        setStoredBoolean('keep_screen_on_while_playing', enable);
+        set({ keepScreenOnWhilePlaying: enable });
     },
     handleToggleSystemBars: (enable) => {
         setStoredBoolean('show_system_bars', enable);
@@ -457,6 +465,7 @@ export const selectPlayerChromeSettingsSnapshot = (state: PlayerChromeSettingsSt
     playerBarClickToExpand: state.playerBarClickToExpand,
     showSystemBars: state.showSystemBars,
     confirmOnExit: state.confirmOnExit,
+    keepScreenOnWhilePlaying: state.keepScreenOnWhilePlaying,
     showOpenPanelCloseButton: state.showOpenPanelCloseButton,
     handleToggleHidePlayerProgressBar: state.handleToggleHidePlayerProgressBar,
     handleSetPlayerBottomBarOffset: state.handleSetPlayerBottomBarOffset,
@@ -485,6 +494,7 @@ export const selectPlayerChromeSettingsSnapshot = (state: PlayerChromeSettingsSt
     handleTogglePlayerBarClickToExpand: state.handleTogglePlayerBarClickToExpand,
     handleToggleSystemBars: state.handleToggleSystemBars,
     handleToggleConfirmOnExit: state.handleToggleConfirmOnExit,
+    handleToggleKeepScreenOn: state.handleToggleKeepScreenOn,
     handleToggleOpenPanelCloseButton: state.handleToggleOpenPanelCloseButton,
     handleWallpaperTransparentRefused: state.handleWallpaperTransparentRefused,
 });

@@ -83,6 +83,9 @@ const AppUpdateDialog: React.FC<AppUpdateDialogProps> = ({ info, onDownload, onL
                         exit={{ opacity: 0, scale: 0.96, y: 4 }}
                         transition={{ duration: 0.2, ease: 'easeOut' }}
                         onClick={event => event.stopPropagation()}
+                        // 与设置弹窗、退出确认框一致的弹窗标记：返回键的处理据此判断「还有弹窗开着」
+                        role="dialog"
+                        aria-modal="true"
                         className="flex max-h-[min(80dvh,620px)] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-[var(--bg-color)] text-[color:var(--text-primary)] shadow-[0_24px_70px_rgba(0,0,0,0.45)] ring-1 ring-[color-mix(in_srgb,var(--text-primary)_14%,transparent)]"
                     >
                         <div className="flex items-start justify-between gap-3 px-5 pt-5">

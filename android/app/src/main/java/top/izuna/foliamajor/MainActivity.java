@@ -23,6 +23,10 @@ public class MainActivity extends BridgeActivity {
     private boolean systemBarsVisible = false;
     /** 正在按用户选择设置系统栏，避免系统回调把自己又弹回全屏（会来回打架）。 */
     private boolean applyingSystemBars = false;
+    /** 预测式返回的回调是否已注册（只注册一次）。 */
+    private boolean backCallbackRegistered = false;
+    /** 一次返回请求正在等 Web 层答复；期间再按返回键直接忽略，避免连着弹出两个确认框。 */
+    private boolean backInFlight = false;
 
     /**
      * 供 FoliaSystemBarsPlugin 调用：显示或隐藏两条系统栏。
@@ -54,6 +58,7 @@ public class MainActivity extends BridgeActivity {
             ws.setBuiltInZoomControls(false);
             bridge.getWebView().setInitialScale(75);
         }
+        registerPredictiveBack();
         applyFullscreen();
         applyCutoutMode();
         getWindow().getDecorView().postDelayed(this::applyFullscreen, 500);
@@ -135,23 +140,58 @@ public class MainActivity extends BridgeActivity {
     }
 
     /**
+     * 注册预测式返回回调。
+     *
+     * 这是上一版返回键「完全没用」的根因：targetSdk 已经是 36，Android 13（API 33）起
+     * 系统默认走 OnBackInvokedDispatcher，**根本不再调用 Activity.onBackPressed()**，
+     * 于是那边写的拦截逻辑是死代码，按下返回键只是被系统把任务退到后台 ——
+     * 表现就是「弹窗不关、也不弹二次确认，直接回桌面」。
+     *
+     * 所以这里同时挂两条通道：API 33+ 注册 dispatcher 回调，低版本/被系统忽略时
+     * 仍然靠 onBackPressed 兜底，两者都走同一个 handleBackRequest()。
+     */
+    private void registerPredictiveBack() {
+        if (backCallbackRegistered || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return;
+        }
+        try {
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                    this::handleBackRequest);
+            backCallbackRegistered = true;
+        } catch (Throwable ignored) {
+            // 个别定制 ROM 没有这个 API：保持 onBackPressed 那条路
+        }
+    }
+
+    @Override
+    public void onBackPressed() {
+        handleBackRequest();
+    }
+
+    /**
      * 系统返回键先问 Web 层：有弹窗就让弹窗关掉，没有弹窗再按设置决定是否二次确认。
      *
      * 为什么不用 @capacitor/app 的 backButton 事件：这里只想要「拦一下、问一句」，
      * 为此装一个插件不划算；直接用 WebView.evaluateJavascript 回调，JS 侧返回
      * 'handled'（已处理）或 'exit'（可以走）。
      */
-    @Override
-    public void onBackPressed() {
-        com.getcapacitor.Bridge bridge = getBridge();
+    private void handleBackRequest() {
+        if (backInFlight) {
+            return;
+        }
+        Bridge bridge = getBridge();
         android.webkit.WebView webView = bridge != null ? bridge.getWebView() : null;
         if (webView == null) {
             moveTaskToBack(true);
             return;
         }
+        backInFlight = true;
         webView.evaluateJavascript(
                 "(function(){try{return window.__foliaHandleBack?window.__foliaHandleBack():'exit';}catch(e){return 'exit';}})()",
                 value -> {
+                    backInFlight = false;
+                    // evaluateJavascript 对字符串返回值给出 JSON 编码（带引号），去掉再比。
                     String result = value == null ? "" : value.replace("\"", "").trim();
                     if (!"handled".equals(result)) {
                         // 退到桌面但保留任务栈：比 finish() 更接近「按 Home」的观感，

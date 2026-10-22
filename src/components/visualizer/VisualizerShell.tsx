@@ -11,6 +11,9 @@ import { isMainAppSurface } from '../../utils/appSurface';
 import { usePlayerOverlayReservation } from '../../hooks/usePlayerOverlayLayout';
 import type { FoliumLayoutRect } from '../../mods/folium/contract';
 import { useIsPlayerBottomBarHost } from '../floating-player/PlayerBottomBarLayoutContext';
+import { useWallChromeOffsetStore, WALL_CHROME_SCALE_DEFAULT_PERCENT } from '../../stores/useWallChromeOffsetStore';
+// 播放页返回按钮与墙上那颗共用同一套位置规则与 CSS 变量，规则定义在 WallBackButton.css
+import '../wall/WallBackButton.css';
 
 // Shared outer shell for all visualizers.
 // This is where we keep background layering, font injection, and the hover-only back button
@@ -48,6 +51,9 @@ interface VisualizerShellProps {
 }
 
 const PLAYER_CHROME_HOTSPOT_SIZE = 120;
+// 播放页左上角返回按钮的位置与大小由 .folia-player-back（WallBackButton.css）负责，
+// 与墙上那颗 .lattice-back 用同一组 CSS 变量、同一个基准、同一条窄屏规则。
+// 这里只把变量写进去，不再自己算 top/left/width —— 各算一套必然对不齐。
 const TOUCH_GUIDE_DISPLAY_MS = 1400;
 const backRevealArea = (bounds: FoliumLayoutRect): FoliumLayoutRect => ({
     left: bounds.left, top: bounds.top,
@@ -75,6 +81,22 @@ const VisualizerShell = forwardRef<HTMLDivElement, VisualizerShellProps>(({
     children,
     className = '',
 }, ref) => {
+    const backChromeOffset = useWallChromeOffsetStore(state => state.offsets.wallBack);
+    const backChromeScale = useWallChromeOffsetStore(state => state.scale);
+    const backChromeIconSize = Math.round((20 * backChromeScale) / 100);
+    // 非默认时才写变量：默认下一个属性都不加，样式表走原始基准。
+    const backChromeVars = (
+        backChromeOffset.x !== 0 || backChromeOffset.y !== 0 || backChromeScale !== WALL_CHROME_SCALE_DEFAULT_PERCENT
+    ) ? {
+        '--wall-back-x': `${backChromeOffset.x}px`,
+        '--wall-back-y': `${backChromeOffset.y}px`,
+        '--wall-back-scale': String(backChromeScale / 100),
+    } as React.CSSProperties : null;
+    const backChromeStyle = (pointerEvents: 'auto' | 'none'): React.CSSProperties => ({
+        ...backChromeVars,
+        pointerEvents,
+    });
+
     const { t } = useTranslation();
     const backdrop = useContext(VisualizerBackdropContext);
     const isInBackdrop = backdrop !== null;
@@ -235,10 +257,10 @@ const VisualizerShell = forwardRef<HTMLDivElement, VisualizerShellProps>(({
                         event.stopPropagation();
                         resolvedOnBack();
                     }}
-                    className="absolute top-6 left-6 z-30 h-10 w-10 rounded-full flex items-center justify-center transition-colors backdrop-blur-md bg-black/20 hover:bg-white/10 text-white/60 pointer-events-auto"
-                    style={{ pointerEvents: isBackButtonVisible ? 'auto' : 'none' }}
+                    className="folia-player-back z-30 rounded-full flex items-center justify-center transition-colors backdrop-blur-md bg-black/20 hover:bg-white/10 text-white/60 pointer-events-auto"
+                    style={backChromeStyle(isBackButtonVisible ? 'auto' : 'none')}
                 >
-                    <ChevronLeft size={20} />
+                    <ChevronLeft size={backChromeIconSize} />
                 </motion.button>
             )}
 

@@ -185,6 +185,28 @@
     transform-origin: 50% 50%;
 }
 
+/* 信息条上 / 下部分的整体位移。
+   变量由 BravaisSeam 写在 .bravais-seam-content 上（那里同时被 React 与逐帧脚本写 style，
+   但两者写的属性不重叠：React 管 width/marginLeft/变量，脚本管 opacity，互不覆盖）。
+   用一处变量 + 一组选择器，而不是每个变体各自算 inline style：集合页之前就是漏了，
+   inline 只加在 FullSeam 上，用户切到别的层位就「没反应」。
+   收录规则：这一套选择器覆盖所有真的会渲染出来的类名 ——
+   上部分：首页窄缝的 home-head、完整信息条 / 列表面板 / 搜索 / 海报页顶部的 crumbs；
+   下部分：首页窄缝的工具坞、完整信息条与面板的动作行、海报页的底部（bravais-poster-bottom）。
+   之前写在这里的 .bravais-seam-spine-head / -foot / .bravais-poster-head / -foot 在任何
+   TSX 里都不存在（书脊是竖排条，没有上下部分；海报的真类名是 poster-top / poster-bottom），
+   属于死规则，换成本表。 */
+.bravais-seam-content .bravais-seam-home-head,
+.bravais-seam-content .bravais-seam-crumbs {
+    transform: translate(var(--seam-head-x, 0px), var(--seam-head-y, 0px));
+}
+
+.bravais-seam-content .bravais-seam-dock,
+.bravais-seam-content .bravais-seam-actions,
+.bravais-seam-content .bravais-poster-bottom {
+    transform: translate(var(--seam-dock-x, 0px), var(--seam-dock-y, 0px));
+}
+
 .bravais-seam-body {
     box-sizing: border-box;
     height: 100%;

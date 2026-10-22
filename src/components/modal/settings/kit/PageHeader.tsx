@@ -19,11 +19,13 @@ type PageHeaderProps = {
     summary?: string;
     closeLabel: string;
     onClose: () => void;
+    /** 顶部分组标签下方那条滑动横线的显隐。 */
+    showTabIndicator?: boolean;
 };
 
 const UNDER_ROW_PADDING = 'px-4 pt-1 md:px-8 md:pt-2';
 
-export const PageHeader: React.FC<PageHeaderProps> = ({ title, contents, activeId, onSelect, summary, closeLabel, onClose }) => {
+export const PageHeader: React.FC<PageHeaderProps> = ({ title, contents, activeId, onSelect, summary, closeLabel, onClose, showTabIndicator = true }) => {
     const hasTabs = summary === undefined && contents.length > 1;
 
     return (
@@ -42,7 +44,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({ title, contents, activeI
             {summary !== undefined && (
                 <div className={`border-b border-[var(--st-line)] ${UNDER_ROW_PADDING} truncate text-[13px] leading-9 text-[color:var(--st-t2)]`}>{summary}</div>
             )}
-            {hasTabs && <Tabs contents tabs={contents} activeId={activeId} onSelect={onSelect} className={UNDER_ROW_PADDING} />}
+            {hasTabs && <Tabs contents tabs={contents} activeId={activeId} onSelect={onSelect} className={UNDER_ROW_PADDING} showIndicator={showTabIndicator} />}
         </header>
     );
 };

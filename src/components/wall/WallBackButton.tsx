@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ChevronLeft } from 'lucide-react';
+import { useWallChromeOffsetStore, WALL_CHROME_SCALE_DEFAULT_PERCENT } from '../../stores/useWallChromeOffsetStore';
 import './WallBackButton.css';
 
 // src/components/wall/WallBackButton.tsx
@@ -49,10 +50,29 @@ type WallBackButtonProps = {
 
 export default function WallBackButton({ label, onBack, concealed = false }: WallBackButtonProps) {
     const revealed = useCornerReveal(concealed);
+    const offset = useWallChromeOffsetStore(state => state.offsets.wallBack);
+    const scale = useWallChromeOffsetStore(state => state.scale);
     const className = concealed ? `lattice-back is-concealed${revealed ? ' is-revealed' : ''}` : 'lattice-back';
+    // 位置与大小都写成 CSS 变量交给样式表：内联 left/top 会盖掉 ≤640px 的媒体查询基准，
+    // 内联 transform 又会盖掉 hover 缩放与隐藏位移。变量两头都能保住。
+    // 播放页那颗返回按钮读的是同一组值（见 VisualizerShell），三处因此天然一致。
+    const chromeStyle = (
+        offset.x !== 0 || offset.y !== 0 || scale !== WALL_CHROME_SCALE_DEFAULT_PERCENT
+    ) ? {
+        '--wall-back-x': `${offset.x}px`,
+        '--wall-back-y': `${offset.y}px`,
+        '--wall-back-scale': String(scale / 100),
+    } as React.CSSProperties : undefined;
     return (
-        <button type="button" className={className} onClick={onBack} aria-label={label} title={label}>
-            <ChevronLeft size={20} />
+        <button
+            type="button"
+            className={className}
+            style={chromeStyle}
+            onClick={onBack}
+            aria-label={label}
+            title={label}
+        >
+            <ChevronLeft size={Math.round((20 * scale) / 100)} />
         </button>
     );
 }

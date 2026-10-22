@@ -4,14 +4,17 @@
 
 /* Same shape and weight as the grid and player back buttons, and the one place the wall's
    square-everything rule is deliberately overridden. */
+/* 位置与大小走 CSS 变量（--wall-back-x/y/scale），由组件按设置写进来。
+   用变量而不是内联 left/top：内联会盖掉下面 ≤640px 的媒体查询，窄屏基准会失效。
+   尺寸同理 —— width/height 一并吃变量，图标大小在组件里按比例算。 */
 .lattice-back {
     position: absolute;
-    top: 20px;
-    left: 24px;
+    top: calc(20px + var(--wall-back-y, 0px));
+    left: calc(24px + var(--wall-back-x, 0px));
     z-index: 5;
     display: grid;
-    width: 40px;
-    height: 40px;
+    width: calc(40px * var(--wall-back-scale, 1));
+    height: calc(40px * var(--wall-back-scale, 1));
     place-items: center;
     border: none;
     border-radius: 999px !important;
@@ -56,5 +59,23 @@
 :root[data-reduce-motion~='lattice'] .lattice-back.is-concealed { transition: none; }
 
 @media (max-width: 640px) {
-    .lattice-back { top: 14px; left: 16px; }
+    .lattice-back { top: calc(14px + var(--wall-back-y, 0px)); left: calc(16px + var(--wall-back-x, 0px)); }
+}
+
+/* 播放页左上角那颗返回（VisualizerShell 内联实现的那颗）。
+   它与墙上这颗是同一个视觉位置、同一组设置，所以基准、CSS 变量、窄屏规则全部照抄，
+   不另写一套数值 —— 之前两边各写各的，窄屏下差 6px，用户看到的就是「没保持一致」。 */
+.folia-player-back {
+    position: absolute;
+    top: calc(20px + var(--wall-back-y, 0px));
+    left: calc(24px + var(--wall-back-x, 0px));
+    width: calc(40px * var(--wall-back-scale, 1));
+    height: calc(40px * var(--wall-back-scale, 1));
+}
+
+@media (max-width: 640px) {
+    .folia-player-back {
+        top: calc(14px + var(--wall-back-y, 0px));
+        left: calc(16px + var(--wall-back-x, 0px));
+    }
 }

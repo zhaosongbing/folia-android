@@ -20,6 +20,7 @@ import BravaisSeamCrumbs from './BravaisSeamCrumbs';
 import BravaisSeamPoster from './BravaisSeamPoster';
 import BravaisSeamAlbumPoster from './BravaisSeamAlbumPoster';
 import { BravaisSeamFlipText } from './BravaisSeamFlip';
+import { useWallChromeOffsetStore } from '../../../stores/useWallChromeOffsetStore';
 
 // src/library/suites/bravais/BravaisSeamContent.tsx
 // 缝里的四套内容（设计稿 §5）：首页窄缝（竖排「书库」+ 竖排页签）、首页书脊、完整信息条（面包屑行、竖排标题、
@@ -79,6 +80,9 @@ const FullSeam: React.FC<{ layer: BravaisLayer; depth: number; actions: BravaisS
     const fold = useMemo(() => ({ label: t('libraryBravais.seamFoldStrip'), run: () => setLevel('hidden') }), [setLevel, t]);
     return (
         <div className="bravais-seam-full">
+            {/* 信息条上部分整体位移：与首页窄缝的 home-head 用同一组设置（seamHead），
+                进集合页不会把用户调好的位置丢掉。 crumbs 自己没有 transform，用 translate
+                不会和任何动效打架。 */}
             <div className="bravais-seam-crumbs">
                 {layer.onDone && (
                     <button type="button" className="bravais-seam-back" data-bravais-seam-action="back" onClick={layer.onDone}

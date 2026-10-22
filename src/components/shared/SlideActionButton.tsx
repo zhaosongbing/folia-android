@@ -29,6 +29,11 @@ export interface SlideActionButtonProps {
     /** 拖满时按钮变成强调色底，上面图标的颜色（缺省白色；强调色可能本身就很浅，例如墙面工具按钮读 --text-on-accent）。 */
     accentForeground?: string;
     disabled?: boolean;
+    /**
+     * 按钮直径（px）。缺省 48，与改动前一致。
+     * 轨道宽度、填充宽度、图标都按它等比缩放 —— 只改容器会让轨道和按钮对不上。
+     */
+    sizePx?: number;
 }
 
 export const SlideActionButton: React.FC<SlideActionButtonProps> = ({
@@ -40,6 +45,7 @@ export const SlideActionButton: React.FC<SlideActionButtonProps> = ({
     onSlide,
     isDaylight,
     accentColor,
+    sizePx = 48,
     accentForeground = '#ffffff',
     disabled = false,
 }) => {
@@ -155,10 +161,13 @@ export const SlideActionButton: React.FC<SlideActionButtonProps> = ({
     };
 
     return (
-        <div className={`relative w-12 h-12 transition-all duration-300 transform ${motionClass}`}>
+        <div
+            className={`relative transition-all duration-300 transform ${motionClass}`}
+            style={{ width: sizePx, height: sizePx }}
+        >
             <div
-                style={{ width: '96px', transition: 'opacity 200ms ease-out' }}
-                className={`absolute right-0 top-0 h-12 rounded-full border pointer-events-none z-0 ${showGuideLine || isDragging ? 'opacity-100' : 'opacity-0'} ${isDaylight ? 'border-black/10 bg-black/5' : 'border-white/10 bg-white/5'}`}
+                style={{ width: sizePx * 2, height: sizePx, transition: 'opacity 200ms ease-out' }}
+                className={`absolute right-0 top-0 rounded-full border pointer-events-none z-0 ${showGuideLine || isDragging ? 'opacity-100' : 'opacity-0'} ${isDaylight ? 'border-black/10 bg-black/5' : 'border-white/10 bg-white/5'}`}
             >
                 <motion.div
                     className="absolute left-3.5 top-[17px] w-3.5 h-3.5 pointer-events-none flex items-center justify-center"
@@ -169,7 +178,7 @@ export const SlideActionButton: React.FC<SlideActionButtonProps> = ({
                         <SlideIcon size={14} />
                     </div>
                 </motion.div>
-                <div ref={trackFillRef} style={{ width: '48px' }} className={`absolute right-0 top-0 bottom-0 rounded-full pointer-events-none ${isDaylight ? 'bg-black/10' : 'bg-white/10'}`} />
+                <div ref={trackFillRef} style={{ width: sizePx }} className={`absolute right-0 top-0 bottom-0 rounded-full pointer-events-none ${isDaylight ? 'bg-black/10' : 'bg-white/10'}`} />
             </div>
             <button
                 ref={buttonRef}
@@ -211,12 +220,12 @@ export const SlideActionButton: React.FC<SlideActionButtonProps> = ({
                     }
                     onActivate();
                 }}
-                style={{ touchAction: 'none' }}
-                className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg backdrop-blur-md transform border-none absolute right-0 top-0 z-10 disabled:opacity-40 disabled:cursor-default ${isDaylight ? 'bg-white/70 text-zinc-900' : 'bg-black/40 text-white'}`}
+                style={{ touchAction: 'none', width: sizePx, height: sizePx }}
+                className={`rounded-full flex items-center justify-center transition-all duration-300 shadow-lg backdrop-blur-md transform border-none absolute right-0 top-0 z-10 disabled:opacity-40 disabled:cursor-default ${isDaylight ? 'bg-white/70 text-zinc-900' : 'bg-black/40 text-white'}`}
                 title={title}
                 aria-label={title}
             >
-                <Icon size={20} />
+                <Icon size={Math.round((20 * sizePx) / 48)} />
             </button>
         </div>
     );

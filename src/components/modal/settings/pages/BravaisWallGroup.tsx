@@ -4,6 +4,15 @@ import { useShallow } from 'zustand/react/shallow';
 import { isBravaisLibraryActive, useIsBravaisLibraryActive } from '../../../../library/app/bravaisLibraryActive';
 import { useLibraryWallLookStore } from '../../../../stores/useLibraryWallLookStore';
 import {
+    WALL_CHROME_OFFSET_SLIDER_MAX_PX,
+    WALL_CHROME_SCALE_DEFAULT_PERCENT,
+    WALL_CHROME_SCALE_MAX_PERCENT,
+    WALL_CHROME_SCALE_MIN_PERCENT,
+    useWallChromeOffsetStore,
+    type WallChromeOffsetAxis,
+    type WallChromeOffsetTarget,
+} from '../../../../stores/useWallChromeOffsetStore';
+import {
     LIBRARY_WALL_LOOKS,
     LIBRARY_WALL_WINDOW_COUNTS,
     libraryWallWindowSharePercent,
@@ -15,7 +24,7 @@ import {
     LIBRARY_WALL_SEAM_STYLES,
     type LibraryWallSeamStyle,
 } from '../../../../utils/libraryWallSeamStyle';
-import { FoldedGroup, PictureChoice, Reveal, Row, Segmented, TextField, Toggle, option, type SettingsGroupDef } from '../kit';
+import { Button, FoldedGroup, PictureChoice, Reveal, Row, Segmented, Slider, TextField, Toggle, option, type SettingsGroupDef } from '../kit';
 
 // src/components/modal/settings/pages/BravaisWallGroup.tsx
 // The Bravais 墙面 group of the 主页与歌单 page: every setting only the bravais library UI has. How
@@ -28,6 +37,10 @@ import { FoldedGroup, PictureChoice, Reveal, Row, Segmented, TextField, Toggle, 
 // the rest are (pages/storage/visualConfigTransfer).
 
 export const BRAVAIS_WALL: SettingsGroupDef = { id: 'bravaisSettings', titleKey: 'options.bravaisSettings', available: isBravaisLibraryActive };
+/** 浮层位置：左上角返回、右下角定位、右下角工具、信息条上部分，四组各两轴。 */
+export const WALL_CHROME: SettingsGroupDef = { id: 'wallChromeOffsets', titleKey: 'options.wallChromeOffsets', available: isBravaisLibraryActive };
+/** 浮层大小：四颗可按百分比缩放的按钮。 */
+export const WALL_CHROME_SIZE: SettingsGroupDef = { id: 'wallChromeSizes', titleKey: 'options.wallChromeSizes', available: isBravaisLibraryActive };
 
 const O = {
     look: option(BRAVAIS_WALL, 'libraryWallLook', 'options.libraryWallLook'),
@@ -38,9 +51,31 @@ const O = {
     backdropLyrics: option(BRAVAIS_WALL, 'bravaisBackdropLyrics', 'options.bravaisBackdropLyrics'),
     backdropBlur: option(BRAVAIS_WALL, 'bravaisBackdropBlur', 'options.bravaisBackdropBlur'),
     seamTitle: option(BRAVAIS_WALL, 'bravaisSeamTitle', 'options.bravaisSeamTitle'),
+    backX: option(WALL_CHROME, 'wallBackOffsetX', 'options.wallBackOffsetX'),
+    backY: option(WALL_CHROME, 'wallBackOffsetY', 'options.wallBackOffsetY'),
+    locateX: option(WALL_CHROME, 'wallLocateOffsetX', 'options.wallLocateOffsetX'),
+    locateY: option(WALL_CHROME, 'wallLocateOffsetY', 'options.wallLocateOffsetY'),
+    toolsX: option(WALL_CHROME, 'wallToolsOffsetX', 'options.wallToolsOffsetX'),
+    toolsY: option(WALL_CHROME, 'wallToolsOffsetY', 'options.wallToolsOffsetY'),
+    dockX: option(WALL_CHROME, 'seamDockOffsetX', 'options.seamDockOffsetX'),
+    dockY: option(WALL_CHROME, 'seamDockOffsetY', 'options.seamDockOffsetY'),
+    headX: option(WALL_CHROME, 'seamHeadOffsetX', 'options.seamHeadOffsetX'),
+    headY: option(WALL_CHROME, 'seamHeadOffsetY', 'options.seamHeadOffsetY'),
+    ponderX: option(WALL_CHROME, 'ponderOffsetX', 'options.ponderOffsetX'),
+    ponderY: option(WALL_CHROME, 'ponderOffsetY', 'options.ponderOffsetY'),
+    toastX: option(WALL_CHROME, 'statusToastOffsetX', 'options.statusToastOffsetX'),
+    toastY: option(WALL_CHROME, 'statusToastOffsetY', 'options.statusToastOffsetY'),
+    backScale: option(WALL_CHROME_SIZE, 'wallChromeScale', 'options.wallChromeScale'),
+    showLocate: option(WALL_CHROME_SIZE, 'showLocateButton', 'options.showLocateButton'),
+    showTools: option(WALL_CHROME_SIZE, 'showToolsButton', 'options.showToolsButton'),
+    chromeEditMode: option(WALL_CHROME, 'chromeEditMode', 'options.chromeEditMode'),
 };
 
-export const BRAVAIS_WALL_OPTIONS = Object.values(O);
+export const BRAVAIS_WALL_OPTIONS = [
+    ...Object.values(O).filter(entry => entry.group === BRAVAIS_WALL),
+    ...Object.values(O).filter(entry => entry.group === WALL_CHROME),
+    ...Object.values(O).filter(entry => entry.group === WALL_CHROME_SIZE),
+];
 
 const LOOK_KEYS: Record<LibraryWallLook, { label: string; description: string }> = {
     solid: { label: 'options.libraryWallLookSolid', description: 'options.libraryWallLookSolidDesc' },
@@ -91,7 +126,52 @@ export const BravaisWallGroup: React.FC = () => {
 
     const glyph = t('options.bravaisSeamSwatchGlyph');
 
+    // ---- 浮层位置 ----
+    const chrome = useWallChromeOffsetStore(useShallow(state => ({
+        offsets: state.offsets,
+        scale: state.scale,
+        setOffset: state.handleSetOffset,
+        setScale: state.handleSetScale,
+        showLocateButton: state.showLocateButton,
+        showToolsButton: state.showToolsButton,
+        toggleLocateButton: state.handleToggleLocateButton,
+        toggleToolsButton: state.handleToggleToolsButton,
+        chromeEditMode: state.chromeEditMode,
+        setChromeEditMode: state.handleSetChromeEditMode,
+        reset: state.handleResetOffset,
+        resetScale: state.handleResetScale,
+    })));
+    const fmtOffset = (value: number) => (
+        value === 0 ? t('options.wallChromeOffsetDefault') : `${value > 0 ? '+' : ''}${value}px`
+    );
+    const offsetRows: Array<{
+        target: WallChromeOffsetTarget;
+        axis: WallChromeOffsetAxis;
+        entry: (typeof O)[keyof typeof O];
+    }> = [
+        { target: 'wallBack', axis: 'x', entry: O.backX },
+        { target: 'wallBack', axis: 'y', entry: O.backY },
+        { target: 'wallLocate', axis: 'x', entry: O.locateX },
+        { target: 'wallLocate', axis: 'y', entry: O.locateY },
+        { target: 'wallTools', axis: 'x', entry: O.toolsX },
+        { target: 'wallTools', axis: 'y', entry: O.toolsY },
+        { target: 'seamHead', axis: 'x', entry: O.headX },
+        { target: 'seamHead', axis: 'y', entry: O.headY },
+        { target: 'seamDock', axis: 'x', entry: O.dockX },
+        { target: 'seamDock', axis: 'y', entry: O.dockY },
+        { target: 'ponder', axis: 'x', entry: O.ponderX },
+        { target: 'ponder', axis: 'y', entry: O.ponderY },
+        { target: 'statusToast', axis: 'x', entry: O.toastX },
+        { target: 'statusToast', axis: 'y', entry: O.toastY },
+    ];
+    // 大小只有一档：四颗按钮共用一个百分比（实测反馈：四颗各调各的记不住）。
+    // 绝对值会让四组滑块的刻度含义不一致，百分比则统一是「相对各自原尺寸」。
+    const fmtScale = (value: number) => (
+        value === WALL_CHROME_SCALE_DEFAULT_PERCENT ? t('options.wallChromeOffsetDefault') : `${value}%`
+    );
+
     return (
+        <>
         <FoldedGroup def={BRAVAIS_WALL}>
             <Row option={O.seamTitle} note={t('options.bravaisSeamTitleDesc')}>
                 <TextField
@@ -153,6 +233,58 @@ export const BravaisWallGroup: React.FC = () => {
                 <Toggle checked={wall.backdropBlur} onChange={wall.setBackdropBlur} />
             </Row>
         </FoldedGroup>
+
+        <FoldedGroup def={WALL_CHROME}>
+            {/* 拖动调整：开启后四颗按钮与信息条上下两部分外面出现可拖动的框，拖框体改位置、
+                拖按钮右下角手柄改大小（四颗共用的那一档比例）；下面的滑块与它改同一组值，可以互相微调。
+                默认关闭（实测反馈：默认开着容易误触）。 */}
+            <Row option={O.chromeEditMode} note={t('options.chromeEditModeDesc')}>
+                <Toggle checked={chrome.chromeEditMode} onChange={chrome.setChromeEditMode} />
+            </Row>
+            {/* 12 个滑块很容易调到找不回原处，给一个一键复位 */}
+            <Row hint={t('options.wallChromeOffsetsDesc')}>
+                <Button variant="quiet" onClick={() => chrome.reset()}>
+                    {t('options.wallChromeOffsetsReset')}
+                </Button>
+            </Row>
+            {offsetRows.map(({ target, axis, entry }) => (
+                <Row key={`${target}-${axis}`} sub option={entry}>
+                    <Slider
+                        value={chrome.offsets[target][axis]}
+                        min={-WALL_CHROME_OFFSET_SLIDER_MAX_PX}
+                        max={WALL_CHROME_OFFSET_SLIDER_MAX_PX}
+                        onChange={value => chrome.setOffset(target, axis, value)}
+                        format={fmtOffset}
+                    />
+                </Row>
+            ))}
+        </FoldedGroup>
+
+        <FoldedGroup def={WALL_CHROME_SIZE}>
+            {/* 一个滑块一起调乱时，一键回到原尺寸 */}
+            <Row hint={t('options.wallChromeSizesDesc')}>
+                <Button variant="quiet" onClick={() => chrome.resetScale()}>
+                    {t('options.wallChromeSizesReset')}
+                </Button>
+            </Row>
+            <Row option={O.backScale} note={t('options.wallChromeScaleDesc')}>
+                <Slider
+                    value={chrome.scale}
+                    min={WALL_CHROME_SCALE_MIN_PERCENT}
+                    max={WALL_CHROME_SCALE_MAX_PERCENT}
+                    step={5}
+                    onChange={value => chrome.setScale(value)}
+                    format={fmtScale}
+                />
+            </Row>
+            <Row option={O.showLocate} note={t('options.showLocateButtonDesc')}>
+                <Toggle checked={chrome.showLocateButton} onChange={chrome.toggleLocateButton} />
+            </Row>
+            <Row option={O.showTools} note={t('options.showToolsButtonDesc')}>
+                <Toggle checked={chrome.showToolsButton} onChange={chrome.toggleToolsButton} />
+            </Row>
+        </FoldedGroup>
+        </>
     );
 };
 

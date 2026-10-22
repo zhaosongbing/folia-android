@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Crosshair, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 import { MotionValue } from 'framer-motion';
 import ProgressBar from './ProgressBar';
 import { PlayerState, LyricData, Theme } from '../types';
@@ -92,8 +92,6 @@ interface FloatingPlayerControlsProps {
     hideControlBar?: boolean;
     controlsDisabled?: boolean;
     trackNavigation?: TrackNavigation | null;
-    /** 定位当前播放歌曲（放到控制栏按钮组里）；不传就不显示那颗准星 */
-    onLocatePlaying?: () => void;
     /** 右侧两个可自定义槽位的动作 id。 */
     slotPrimary: PlayerControlSlotActionId;
     slotSecondary: PlayerControlSlotActionId;
@@ -129,7 +127,6 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
     hideControlBar = false,
     controlsDisabled = false,
     trackNavigation = null,
-    onLocatePlaying,
     slotPrimary,
     slotSecondary,
     slotContext,
@@ -486,7 +483,6 @@ const FloatingPlayerControls: React.FC<FloatingPlayerControlsProps> = ({
                                     slotSecondary={slotSecondary}
                                     slotContext={resolvedSlotContext}
                                     showTrackSwitchButtons={showExpandedTrackSwitchButtons}
-                                    onLocatePlaying={onLocatePlaying}
                                 />
                             ) : (
                                 <CollapsedView
@@ -561,8 +557,6 @@ interface ExpandedViewProps {
     slotContext: PlayerControlSlotContext;
     /** 展开态在播放/暂停按钮两侧显示上一首/下一首 */
     showTrackSwitchButtons?: boolean;
-    /** 定位当前播放歌曲；不传就不画那颗准星 */
-    onLocatePlaying?: () => void;
 }
 
 const ExpandedView: React.FC<ExpandedViewProps> = ({
@@ -585,10 +579,7 @@ const ExpandedView: React.FC<ExpandedViewProps> = ({
     slotSecondary,
     slotContext,
     showTrackSwitchButtons = false,
-    onLocatePlaying,
 }) => {
-    const { t } = useTranslation();
-    const locateText = t('playlist.locatePlaying');
     // 播放按钮的图标用「对外展示」状态，与双击落点反馈同源；props 的 playerState
     // 只留给自动展开这类内部逻辑。
     const displayPlayerState = usePlaybackStore(selectDisplayPlayerState);
@@ -675,22 +666,6 @@ const ExpandedView: React.FC<ExpandedViewProps> = ({
                         style={{ color: primaryColor }}
                     >
                         <SkipForward size={18} fill="currentColor" />
-                    </button>
-                )}
-                {/* 定位当前播放歌曲：放在控制栏按钮组里，和切歌按钮同一行，不用去墙上找那颗准星 */}
-                {onLocatePlaying && (
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onLocatePlaying();
-                        }}
-                        disabled={controlsDisabled}
-                        aria-label={locateText}
-                        title={locateText}
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-none bg-transparent shadow-none transition-transform ${controlsDisabled ? 'cursor-not-allowed opacity-45' : 'hover:scale-105 opacity-70 hover:opacity-100'}`}
-                        style={{ color: primaryColor }}
-                    >
-                        <Crosshair size={17} />
                     </button>
                 )}
             </div>

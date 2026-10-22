@@ -17,6 +17,7 @@ import { BRAVAIS_SPECIAL_ICONS } from './bravaisSpecialIcons';
 import { closeBravaisHomePopover, setBravaisHomeOpenRequest, setBravaisHomePopover, useBravaisHomeUiStore } from './bravaisHomeUiStore';
 import { useBravaisReducedTransitions } from './bravaisMotion';
 import { bravaisPopMotion } from './bravaisSeamMotion';
+import { useWallChromeOffsetStore } from '../../../stores/useWallChromeOffsetStore';
 
 // src/library/suites/bravais/BravaisSeamHomeTools.tsx
 // 首页窄缝底部的工具格。
@@ -149,6 +150,7 @@ const BravaisSeamHomeTools: React.FC<{
         );
     };
 
+    // 信息条下部分的位移同样走 bravais.css 的 CSS 变量，不在这里算 inline。
     return (
         <div ref={dockRef} className="bravais-seam-dock" onKeyDown={onKeyDown}>
             <AnimatePresence>
