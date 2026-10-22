@@ -87,6 +87,29 @@ bash scripts/publish-android-release.sh \
 `publish-android-release.sh` 的两条硬性要求：APK 文件名必须以 `.apk` 结尾
 （应用靠后缀挑下载直链）、更新日志用 Markdown 写（会原样进 Release 正文与 README）。
 
+## Gitee 发布（国内下载快 100 倍）
+
+同一份 14.8MB 的包实测：GitHub 直链 13.7 KB/s（约 18 分钟），Gitee 附件
+1.63 MB/s（9 秒）。所以应用内的更新检查优先问 Gitee，GitHub 作为回退。
+
+令牌只从环境变量读，**不要写进任何文件或提交**：
+
+```bash
+export GITEE_TOKEN=<你的 Gitee 私人令牌>     # 需要 projects 权限
+bash scripts/publish-android-release.sh <apk> <notes.md> [版本号]
+```
+
+脚本会：GitHub Release → GitHub README 更新日志 → Gitee Release（新建或复用同 tag）。
+不设 `GITEE_TOKEN` 时自动跳过 Gitee，应用内会回退到 GitHub 源。
+
+Gitee 的几个坑，脚本里都处理了：
+
+- 认证用 `access_token` 查询参数，不是 Authorization 头；
+- 更新 Release 的 PATCH 请求必须带 `tag_name`，否则 400 `tag_name is missing`；
+- 附件**没有 id**，删不掉，重复上传会叠加同名文件，所以脚本遇到同名附件直接跳过 ——
+  同一版本号只发一次，要重发就升版本号；
+- 接口不返回 `html_url`，发布页由客户端从接口地址推导。
+
 ## 回滚
 
 ```bash

@@ -8,8 +8,8 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // 每个 fix 版本递增：第四段是构建序号，release tag 与在线更新都用它区分。
-        versionCode 721015
-        versionName "0.7.21.15"
+        versionCode 721016
+        versionName "0.7.21.16"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

@@ -7,10 +7,12 @@
 import { create } from 'zustand';
 import { getStoredBoolean, setStoredBoolean } from './storagePrimitives';
 import {
+    DEFAULT_UPDATE_SOURCES,
     DEFAULT_UPDATE_SOURCE_URL,
     checkForAppUpdate,
     getCurrentAppVersion,
     type AppUpdateInfo,
+    type AppUpdateCheckResult,
 } from '../services/appUpdate';
 
 const ENABLE_KEY = 'enable_app_update_check';
@@ -96,7 +98,19 @@ export const useAppUpdateStore = create<AppUpdateState>((set, get) => ({
         }
 
         set({ isChecking: true, lastResult: 'checking' });
-        const result = await checkForAppUpdate(sourceUrl);
+        // 先问用户配置的源；失败就依次试其它源（Gitee 优先、GitHub 兜底）。
+        // 单一源在国内网络下经常连不上，多试一个成本很低、明显更稳。
+        let result: AppUpdateCheckResult = await checkForAppUpdate(sourceUrl);
+        if (result.status === 'error') {
+            for (const fallback of DEFAULT_UPDATE_SOURCES) {
+                if (fallback === sourceUrl) continue;
+                const retried = await checkForAppUpdate(fallback);
+                if (retried.status !== 'error') {
+                    result = retried;
+                    break;
+                }
+            }
+        }
         set({ isChecking: false });
 
         if (result.status === 'error') {

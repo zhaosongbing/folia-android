@@ -54,6 +54,9 @@ TODO.MD
 commit.md
 .codebuff-ai/reasson/conf.jsonc
 scripts/*
+# 发布脚本要进版本库（上游忽略了整个 scripts/，这两个是自己加的）
+!scripts/publish-android-release.sh
+!scripts/gitee_release.py
 docs/TODO.md
 design/
 plan/

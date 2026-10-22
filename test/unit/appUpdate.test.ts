@@ -6,6 +6,8 @@ import {
     formatReleaseNotes,
     isVersionNewer,
     parseVersionSegments,
+    resolveLatestVersion,
+    resolveReleasePage,
 } from '../../src/services/appUpdate';
 
 describe('版本号解析', () => {
@@ -88,5 +90,39 @@ describe('更新日志清洗', () => {
 
     it('空串仍然为空', () => {
         expect(formatReleaseNotes('')).toBe('');
+    });
+});
+
+describe('Gitee 源的适配', () => {
+    it('tag 是版本号时直接用', () => {
+        expect(resolveLatestVersion('v0.7.21.16', [])).toBe('0.7.21.16');
+    });
+
+    it('tag 不含数字时从 APK 资产名里解析', () => {
+        // Gitee 上 tag 可能就写成 folia，这时版本只能从文件名拿
+        const assets = [
+            { name: 'folia.zip', browser_download_url: 'x' },
+            { name: 'Folia-0.7.21.15-release.apk', browser_download_url: 'y' },
+        ];
+        expect(resolveLatestVersion('folia', assets)).toBe('0.7.21.15');
+    });
+
+    it('没有 APK 资产时返回原 tag（由调用方判为无版本）', () => {
+        expect(resolveLatestVersion('folia', [{ name: 'a.zip' }])).toBe('folia');
+    });
+
+    it('Gitee 缺少 html_url 时推导发布页', () => {
+        expect(resolveReleasePage('https://gitee.com/api/v5/repos/owner/repo/releases/latest'))
+            .toBe('https://gitee.com/owner/repo/releases');
+    });
+
+    it('GitHub 的 html_url 优先', () => {
+        expect(resolveReleasePage('https://api.github.com/repos/o/r/releases/latest', 'https://github.com/o/r/releases/tag/v1'))
+            .toBe('https://github.com/o/r/releases/tag/v1');
+    });
+
+    it('GitHub 缺 html_url 时也能推导', () => {
+        expect(resolveReleasePage('https://api.github.com/repos/o/r/releases/latest'))
+            .toBe('https://github.com/o/r/releases');
     });
 });

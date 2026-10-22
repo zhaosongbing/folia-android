@@ -9,7 +9,14 @@
 // 设置里可以覆盖成自己的发布源，格式要求同 GitHub API 的 releases/latest。
 
 /** 更新源默认地址。可在设置里覆盖。 */
-export const DEFAULT_UPDATE_SOURCE_URL = 'https://api.github.com/repos/zhaosongbing/folia-android-releases/releases/latest';
+/** Gitee 更新源：实测同一份 14.8MB 的包，Gitee 附件 1.63 MB/s（9 秒），
+ *  GitHub 直链只有 13.7 KB/s（约 18 分钟），所以默认走 Gitee。 */
+export const GITEE_UPDATE_SOURCE_URL = 'https://gitee.com/api/v5/repos/zhaosongbing/folia/releases/latest';
+/** GitHub 更新源：Gitee 不可用时的回退。 */
+export const GITHUB_UPDATE_SOURCE_URL = 'https://api.github.com/repos/zhaosongbing/folia-android-releases/releases/latest';
+/** 依次尝试的更新源。第一个能正常返回就用它。 */
+export const DEFAULT_UPDATE_SOURCES = [GITEE_UPDATE_SOURCE_URL, GITHUB_UPDATE_SOURCE_URL] as const;
+export const DEFAULT_UPDATE_SOURCE_URL = GITEE_UPDATE_SOURCE_URL;
 
 export type AppUpdateInfo = {
     /** 远端版本，已去掉开头的 v */
@@ -92,6 +99,41 @@ type GithubRelease = {
     assets?: GithubReleaseAsset[];
 };
 
+/** 从一段文字里抠出版本号，取第一个 x.y 或 x.y.z 形式的片段。 */
+const VERSION_PATTERN = /(\d+\.\d+(?:\.\d+)*)/;
+
+/**
+ * 决定这次发布的版本号。
+ *
+ * 先看 tag；tag 里没有数字时（Gitee 上有人把 tag 直接写成 `folia`），退而从 APK 资产名里找
+ * （`Folia-0.7.21.15-release.apk` → `0.7.21.15`）。没有这一步，Gitee 源的版本号会解析成
+ * 0.0.0，永远判定「已是最新」。
+ */
+export const resolveLatestVersion = (tag: string, assets: GithubReleaseAsset[]): string => {
+    const fromTag = tag.trim().replace(/^v/i, '');
+    if (/\d/.test(fromTag)) return fromTag;
+    for (const asset of assets) {
+        const name = asset.name ?? '';
+        if (!name.toLowerCase().endsWith('.apk')) continue;
+        const matched = name.match(VERSION_PATTERN);
+        if (matched) return matched[1];
+    }
+    return fromTag;
+};
+
+/** 发布页地址。Gitee 的 API 不返回 html_url，只能从源地址推导。 */
+export const resolveReleasePage = (sourceUrl: string, htmlUrl?: string): string => {
+    if (htmlUrl) return htmlUrl;
+    // GitHub 是 api.github.com/repos/...，Gitee 是 gitee.com/api/v5/repos/...，两种都要认
+    const matched = sourceUrl.match(/^(https?:\/\/[^/]+)\/(?:api\/v5\/|api\/)?repos\/([^/]+)\/([^/]+)/);
+    if (!matched) return '';
+    const [, host, owner, repo] = matched;
+    const pageHost = host.includes('gitee.com') ? 'https://gitee.com'
+        : host.includes('api.github.com') ? 'https://github.com'
+            : host;
+    return `${pageHost}/${owner}/${repo}/releases`;
+};
+
 /** 从 release 的资产里挑 APK 直链：优先名字里带 apk 的，忽略 .sha256 之类的校验文件。 */
 const pickApkAssetUrl = (release: GithubRelease): string | null => {
     const assets = release.assets ?? [];
@@ -136,8 +178,9 @@ export const checkForAppUpdate = async (
     }
 
     const tag = release.tag_name ?? release.name ?? '';
-    const latestVersion = tag.trim().replace(/^v/i, '');
-    if (!latestVersion) {
+    const assets = release.assets ?? [];
+    const latestVersion = resolveLatestVersion(tag, assets);
+    if (!latestVersion || !/\d/.test(latestVersion)) {
         return { status: 'error', message: 'no-version' };
     }
 
@@ -151,7 +194,7 @@ export const checkForAppUpdate = async (
             latestVersion,
             currentVersion,
             releaseNotes: (release.body ?? '').trim(),
-            releaseUrl: release.html_url ?? '',
+            releaseUrl: resolveReleasePage(sourceUrl, release.html_url),
             downloadUrl: pickApkAssetUrl(release),
             publishedAt: release.published_at ?? '',
         },
