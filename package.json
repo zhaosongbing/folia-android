@@ -8,7 +8,7 @@
     "email": "chthollyphile@users.noreply.github.com"
   },
   "private": true,
-  "version": "0.7.21.25",
+  "version": "0.7.21.26",
   "license": "AGPL-3.0",
   "type": "module",
   "main": "electron/main.cjs",
@@ -268,6 +268,7 @@
     "@types/react-dom": "^19.3.0",
     "@types/three": "^0.185.4",
     "@types/ws": "^8.18.1",
+    "@vitejs/plugin-legacy": "^8.2.3",
     "@vitejs/plugin-react": "^6.1.1",
     "@webgpu/types": "0.1.74",
     "@xmldom/xmldom": "^0.9.12",

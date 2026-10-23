@@ -2,6 +2,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { type ConfigEnv, type UserConfig, type ViteDevServer } from 'vite';
 import react from '@vitejs/plugin-react';
+import legacy from '@vitejs/plugin-legacy';
 import { commandPinyinPlugin } from './dev/pinyin/commandPinyinPlugin.mjs';
 import { traditionalLocalePlugin } from './dev/i18n/traditionalLocalePlugin.mjs';
 import { icuFoliaDataPlugin } from './dev/icuFolia/icuFoliaDataPlugin.mjs';
@@ -270,6 +271,17 @@ export default async function viteConfig(_config: ConfigEnv): Promise<UserConfig
       traditionalLocalePlugin(),
       icuFoliaDataPlugin(),
       react(),
+      // 车机 / 旧版 Android WebView 兼容产物：FOLIA_LEGACY=1 时额外生成一份
+      // nomodule + SystemJS 的老内核 bundle，并给现代包补上低版本 WebView 缺的 polyfill。
+      // 旧内核连 type="module" 都不认（Chrome 61 以前），只能靠 nomodule 那份跑起来。
+      // 默认关闭：网页版和 Electron 不需要多背一份产物。
+      ...(process.env.FOLIA_LEGACY === '1'
+        ? [legacy({
+            targets: ['Chrome >= 60', 'Android >= 6', 'Safari >= 12'],
+            modernTargets: ['Chrome >= 61', 'Android >= 6'],
+            modernPolyfills: true,
+          })]
+        : []),
       // Android APK 构建（FOLIA_DISABLE_PWA=1）禁用 Service Worker：
       // Capacitor 资产随包分发，SW 只会缓存旧构建、阻碍热更新。
       ...(process.env.FOLIA_DISABLE_PWA === '1' ? [] : [VitePWA({
