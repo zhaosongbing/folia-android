@@ -20,9 +20,19 @@ interface GridLocateButtonProps {
     isSeeking: boolean;
     title: string;
     onLocate: () => void;
+    /**
+     * 独立漂浮：不再挂在某个动作按钮上方的弹性列里（LocateFloatingSlot 用）。
+     *
+     * 解开这层绑定是实测要求：定位按钮原先作为 `.lattice-tools.has-above` 的弹性子项跟在工具按钮
+     * 同一条竖列里，拖工具按钮时整列一起动 —— 用户看到的是「拖工具，定位也跟着跑」。
+     * 独立之后它有自己的固定锚点，两边的位移互不影响。
+     * 形态差别只有两处：去掉「半个身子缩在工具按钮后面、悬停才滑出来」的那套 translate，
+     * 以及不再需要 mr-1 的贴边间距。
+     */
+    floating?: boolean;
 }
 
-export const GridLocateButton: React.FC<GridLocateButtonProps> = ({ isDaylight, accentColor, isHere, isSeeking, title, onLocate }) => {
+export const GridLocateButton: React.FC<GridLocateButtonProps> = ({ isDaylight, accentColor, isHere, isSeeking, title, onLocate, floating = false }) => {
     const [presses, setPresses] = useState(0);
     // 位置微调用相对定位的 left/top，不用 transform：这个按钮的常态位移与悬停滑动都写在
     // translate-x-* 上，inline transform 会把它们盖掉。
@@ -48,10 +58,14 @@ export const GridLocateButton: React.FC<GridLocateButtonProps> = ({ isDaylight, 
                 setPresses(count => count + 1);
                 onLocate();
             }}
-            // It moves with the action button below it: half out of the way on a narrow window, whole on a wide one.
             // 过渡只给颜色 / 透明度 / 变换，绝不给 all：拖动调位置时 left/top/width/height 每帧都在变，
             // all + duration-300 会让按钮拖着 300ms 的尾迹追手（实测反馈「不跟手」）。
-            className={`relative mr-1 flex h-10 w-10 translate-x-1/2 items-center justify-center rounded-full opacity-60 shadow-lg backdrop-blur-md transition-[color,background-color,opacity,transform] duration-300 active:scale-90 group-hover:translate-x-0 group-hover:opacity-100 md:translate-x-0 md:opacity-100 md:hover:scale-105 ${isDaylight ? 'bg-white/70 text-zinc-900' : 'bg-black/40 text-white'}`}
+            // 非独立时它跟着下方的动作按钮走：窄窗半个身子缩在后面，宽窗整个露出来（见 floating 的注释）。
+            className={`relative flex h-10 w-10 items-center justify-center rounded-full shadow-lg backdrop-blur-md transition-[color,background-color,opacity,transform] duration-300 active:scale-90 ${
+                floating
+                    ? 'opacity-90 hover:opacity-100'
+                    : 'mr-1 translate-x-1/2 opacity-60 group-hover:translate-x-0 group-hover:opacity-100 md:translate-x-0 md:opacity-100 md:hover:scale-105'
+            } ${isDaylight ? 'bg-white/70 text-zinc-900' : 'bg-black/40 text-white'}`}
         >
             {isSeeking
                 ? <span className="locate-seeking pointer-events-none absolute inset-0 rounded-full border" style={{ borderColor: accentColor }} />

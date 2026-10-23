@@ -2,6 +2,7 @@ import React, { useCallback } from 'react';
 import { Blinds, PanelsTopLeft } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { GridLocateButton } from '../../../components/app/playing-song-locator/GridLocateButton';
+import { LocateFloatingSlot } from '../../../components/app/playing-song-locator/LocateFloatingSlot';
 import WallBackButton from '../../../components/wall/WallBackButton';
 import WallToolsButton from '../../../components/wall/WallToolsButton';
 import type { WallToolsEntry, WallToolsQuickAction } from '../../../components/wall/WallToolsRows';
@@ -105,14 +106,12 @@ const BravaisStageChrome: React.FC<BravaisStageChromeProps> = ({
                     concealed
                 />
             )}
-            {showToolsButton && (
-            <WallToolsButton
-                idPrefix="bravais-tools"
-                label={t('libraryBravais.tools')}
-                claimed={toolsClaimed}
-                isDaylight={isDaylight}
-                above={showLocateButton && locatePlaying ? (
+            {/* 定位按钮独立漂浮在自己的槽里：不再作为工具按钮的 above 弹性子项，
+                两者各有各的偏移与拖动，互不牵连（实测反馈：拖工具按钮时定位也会跟着动）。 */}
+            {showLocateButton && locatePlaying && (
+                <LocateFloatingSlot>
                     <GridLocateButton
+                        floating
                         isDaylight={isDaylight}
                         accentColor="var(--text-accent)"
                         isHere={locatePlaying.isHere}
@@ -120,7 +119,14 @@ const BravaisStageChrome: React.FC<BravaisStageChromeProps> = ({
                         title={t('playlist.locatePlaying')}
                         onLocate={locatePlaying.run}
                     />
-                ) : undefined}
+                </LocateFloatingSlot>
+            )}
+            {showToolsButton && (
+            <WallToolsButton
+                idPrefix="bravais-tools"
+                label={t('libraryBravais.tools')}
+                claimed={toolsClaimed}
+                isDaylight={isDaylight}
                 destination={destination}
                 entries={entries}
                 help={BRAVAIS_HELP_ROWS.map(row => (

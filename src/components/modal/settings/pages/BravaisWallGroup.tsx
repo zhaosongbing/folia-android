@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 import { isBravaisLibraryActive, useIsBravaisLibraryActive } from '../../../../library/app/bravaisLibraryActive';
 import { useLibraryWallLookStore } from '../../../../stores/useLibraryWallLookStore';
+import { closeSettings } from '../../../../stores/useSettingsModalStore';
 import {
     WALL_CHROME_OFFSET_SLIDER_MAX_PX,
     WALL_CHROME_SCALE_DEFAULT_PERCENT,
@@ -235,11 +236,16 @@ export const BravaisWallGroup: React.FC = () => {
         </FoldedGroup>
 
         <FoldedGroup def={WALL_CHROME}>
-            {/* 拖动调整：开启后四颗按钮与信息条上下两部分外面出现可拖动的框，拖框体改位置、
-                拖按钮右下角手柄改大小（四颗共用的那一档比例）；下面的滑块与它改同一组值，可以互相微调。
-                默认关闭（实测反馈：默认开着容易误触）。 */}
+            {/* 编辑态入口：打开后设置直接收起 —— 编辑层画在设置弹窗之上，开着弹窗既看不清也拖不动。
+                进入后是独立的会话（顶部有取消 / 完成），所以这个开关本身也会被那两颗按钮关掉。 */}
             <Row option={O.chromeEditMode} note={t('options.chromeEditModeDesc')}>
-                <Toggle checked={chrome.chromeEditMode} onChange={chrome.setChromeEditMode} />
+                <Toggle
+                    checked={chrome.chromeEditMode}
+                    onChange={value => {
+                        chrome.setChromeEditMode(value);
+                        if (value) closeSettings();
+                    }}
+                />
             </Row>
             {/* 12 个滑块很容易调到找不回原处，给一个一键复位 */}
             <Row hint={t('options.wallChromeOffsetsDesc')}>

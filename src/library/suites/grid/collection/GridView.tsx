@@ -13,6 +13,7 @@ import { onlineFailureOf, type OnlineFailure } from '../../../../services/online
 import { onlineFailureMessage } from '../../../../services/onlineMusic/failure/onlineFailureTexts';
 import { getPlaybackSongKey } from '../../../../utils/appPlaybackGuards';
 import { GridLocateButton } from '../../../../components/app/playing-song-locator/GridLocateButton';
+import { LocateFloatingSlot } from '../../../../components/app/playing-song-locator/LocateFloatingSlot';
 import { usePlaybackStore } from '../../../../stores/usePlaybackStore';
 import { usePlayingSongLocatorStore } from '../../../../stores/usePlayingSongLocatorStore';
 import { answerLocateRequest, locatePlayingSongOnPage } from '../../../../components/app/playing-song-locator/playingSongLocator';
@@ -2169,23 +2170,29 @@ export const GridView: React.FC<GridViewProps> = ({
 
             {/* Bottom Right Floating Button */}
             {mode === 'tracks' && displayTracks.length > 0 && (
-                <GridListSearchButton
-                    isDaylight={isDaylight}
-                    accentColor={theme.accentColor}
-                    listTitle={t('playlist.viewTracks')}
-                    searchTitle={t('home.gridSearchPlaceholder')}
-                    onOpenList={() => setShowSidePanel(true)}
-                    above={playingSongKey !== null && collection ? (
-                        <GridLocateButton
-                            isDaylight={isDaylight}
-                            accentColor={theme.accentColor}
-                            isHere={isPlayingSongHere}
-                            isSeeking={isLocateAsked}
-                            title={t('playlist.locatePlaying')}
-                            onLocate={locateOnThisPage}
-                        />
-                    ) : undefined}
-                />
+                <>
+                    {/* 定位按钮独立漂浮：不再塞进动作按钮的 above 弹性列，拖动作按钮时它不跟着动。 */}
+                    {playingSongKey !== null && collection && (
+                        <LocateFloatingSlot>
+                            <GridLocateButton
+                                floating
+                                isDaylight={isDaylight}
+                                accentColor={theme.accentColor}
+                                isHere={isPlayingSongHere}
+                                isSeeking={isLocateAsked}
+                                title={t('playlist.locatePlaying')}
+                                onLocate={locateOnThisPage}
+                            />
+                        </LocateFloatingSlot>
+                    )}
+                    <GridListSearchButton
+                        isDaylight={isDaylight}
+                        accentColor={theme.accentColor}
+                        listTitle={t('playlist.viewTracks')}
+                        searchTitle={t('home.gridSearchPlaceholder')}
+                        onOpenList={() => setShowSidePanel(true)}
+                    />
+                </>
             )}
 
             {/* Tracks Cut-in Side Panel */}

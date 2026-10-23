@@ -1,10 +1,13 @@
 // src/components/wall/ChromeEditOverlay.tsx
-// 浮层位置的手动调整层：开启「拖动调整位置」后，在四颗可调按钮与信息条上下两部分外面画一个虚线框，
-// 拖框体改位置、拖右下角手柄改大小。
+// 浮层编辑态：开启「拖动调整位置」后进入一个明确的编辑模式 ——
+//   · 四颗按钮与信息条上下两部分外面各一个虚线框，拖框体改位置、拖右下角手柄改大小；
+//   · 顶部一条细工具栏：网格线开关 / 取消 / 完成；
+//   · 点选一个框后，框旁边显示它到屏幕四边的距离，底部出现贴边与居中；
+//   · 取消回到打开编辑态时的样子，完成保留改动。
 //
 // 为什么用覆盖层而不是给每个按钮包一层 wrapper：这些控件分散在四五个组件里，
-// 各自的定位方式还不一样（absolute、relative、flex item），包 wrapper 会改 DOM 结构，
-// 很容易把 .lattice-tools 的 has-above 弹性布局、或者 seam 的 overflow 裁切弄坏。
+// 各自的定位方式还不一样（absolute、relative、fixed），包 wrapper 会改 DOM 结构，
+// 很容易把 .lattice-tools 的弹性布局、或者 seam 的 overflow 裁切弄坏。
 // 覆盖层只读位置、不改结构，退出编辑态就整体消失，不影响正常使用。
 //
 // 与播放页控制栏的定位模式同一套交互：按下记录起点 → setPointerCapture → 移动只写 store →
@@ -17,8 +20,9 @@
 //    只写 store 会让框体晚一帧才跟上手指。
 // 3) 框体上的过渡只留颜色（transition-colors），不碰位置属性。
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AlignCenterHorizontal, AlignCenterVertical, ArrowDownToLine, ArrowLeftToLine, ArrowRightToLine, ArrowUpToLine, Check, Grid3x3, Undo2, X } from 'lucide-react';
 import {
     useWallChromeOffsetStore,
     WALL_CHROME_SCALE_MAX_PERCENT,
@@ -26,6 +30,7 @@ import {
     type WallChromeOffsetTarget,
     type WallChromeSizeTarget,
 } from '../../stores/useWallChromeOffsetStore';
+import { resolveChromeMargins, resolveChromeSnapDelta, type ChromeSnapTarget } from '../../utils/wallChromeSnap';
 
 /** 一颗可编辑的浮层：找控件的选择器、它改哪一组偏移、哪一组大小。 */
 type ChromeEditEntry = {
@@ -43,14 +48,14 @@ type ChromeEditEntry = {
 };
 
 const ENTRIES: readonly ChromeEditEntry[] = [
-    { id: 'wallBack', selector: '.lattice-back, .folia-player-back', offsetTarget: 'wallBack', sizeTarget: 'wallBack', labelKey: 'options.wallBackOffsetX' },
-    { id: 'wallLocate', selector: '[data-grid-locate]', offsetTarget: 'wallLocate', sizeTarget: 'wallLocate', labelKey: 'options.wallLocateOffsetX' },
-    { id: 'wallTools', selector: '.lattice-tools', offsetTarget: 'wallTools', sizeTarget: 'wallTools', labelKey: 'options.wallToolsOffsetX' },
-    { id: 'ponder', selector: '[data-testid="page-ponder-touch-button"]', offsetTarget: 'ponder', sizeTarget: 'ponder', labelKey: 'options.ponderOffsetX' },
+    { id: 'wallBack', selector: '.lattice-back, .folia-player-back', offsetTarget: 'wallBack', sizeTarget: 'wallBack', labelKey: 'options.wallChromeTargetBack' },
+    { id: 'wallLocate', selector: '[data-grid-locate]', offsetTarget: 'wallLocate', sizeTarget: 'wallLocate', labelKey: 'options.wallChromeTargetLocate' },
+    { id: 'wallTools', selector: '.lattice-tools', offsetTarget: 'wallTools', sizeTarget: 'wallTools', labelKey: 'options.wallChromeTargetTools' },
+    { id: 'ponder', selector: '[data-testid="page-ponder-touch-button"]', offsetTarget: 'ponder', sizeTarget: 'ponder', labelKey: 'options.wallChromeTargetPonder' },
     // 信息条上部分：首页窄缝的 home-head、完整信息条 / 面板 / 海报页的 crumbs 是同一组设置（seamHead）。
-    { id: 'seamHead', selector: '.bravais-seam-content .bravais-seam-home-head, .bravais-seam-content .bravais-seam-crumbs', offsetTarget: 'seamHead', labelKey: 'options.seamHeadOffsetX' },
+    { id: 'seamHead', selector: '.bravais-seam-content .bravais-seam-home-head, .bravais-seam-content .bravais-seam-crumbs', offsetTarget: 'seamHead', labelKey: 'options.wallChromeTargetSeamHead' },
     // 信息条下部分：首页的工具坞、完整信息条的动作行、海报页的底部是同一组设置（seamDock）。
-    { id: 'seamDock', selector: '.bravais-seam-content .bravais-seam-dock, .bravais-seam-content .bravais-seam-actions, .bravais-seam-content .bravais-poster-bottom', offsetTarget: 'seamDock', labelKey: 'options.seamDockOffsetX' },
+    { id: 'seamDock', selector: '.bravais-seam-content .bravais-seam-dock, .bravais-seam-content .bravais-seam-actions, .bravais-seam-content .bravais-poster-bottom', offsetTarget: 'seamDock', labelKey: 'options.wallChromeTargetSeamDock' },
 ];
 
 type Box = { id: string; left: number; top: number; width: number; height: number };
@@ -68,19 +73,39 @@ type DragState = {
     startRect: { left: number; top: number; width: number; height: number };
 };
 
+/** 贴边 / 居中。图标 + 文字标题：412px 的屏幕上六个动作只放得下图标，
+ *  名字进 title 与 aria-label（长按可看到，读屏也读得到）。 */
+const SNAP_ACTIONS: ReadonlyArray<{ target: ChromeSnapTarget; labelKey: string; icon: typeof ArrowLeftToLine }> = [
+    { target: 'left', labelKey: 'options.wallChromeSnapLeft', icon: ArrowLeftToLine },
+    { target: 'top', labelKey: 'options.wallChromeSnapTop', icon: ArrowUpToLine },
+    { target: 'right', labelKey: 'options.wallChromeSnapRight', icon: ArrowRightToLine },
+    { target: 'bottom', labelKey: 'options.wallChromeSnapBottom', icon: ArrowDownToLine },
+    { target: 'centerX', labelKey: 'options.wallChromeSnapCenterX', icon: AlignCenterHorizontal },
+    { target: 'centerY', labelKey: 'options.wallChromeSnapCenterY', icon: AlignCenterVertical },
+];
+
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 const ChromeEditOverlay: React.FC = () => {
     const { t } = useTranslation();
     const editMode = useWallChromeOffsetStore(state => state.chromeEditMode);
+    const gridOn = useWallChromeOffsetStore(state => state.chromeEditGrid);
     const offsets = useWallChromeOffsetStore(state => state.offsets);
     const scale = useWallChromeOffsetStore(state => state.scale);
     const setOffset = useWallChromeOffsetStore(state => state.handleSetOffset);
     const setScale = useWallChromeOffsetStore(state => state.handleSetScale);
+    const setGrid = useWallChromeOffsetStore(state => state.handleSetChromeEditGrid);
+    const setEditMode = useWallChromeOffsetStore(state => state.handleSetChromeEditMode);
+    const cancelEdit = useWallChromeOffsetStore(state => state.handleCancelChromeEdit);
 
     const [boxes, setBoxes] = useState<Box[]>([]);
     const [activeId, setActiveId] = useState<string | null>(null);
+    const [selectedId, setSelectedId] = useState<string | null>(null);
     const dragRef = useRef<DragState | null>(null);
+    const [viewport, setViewport] = useState(() => ({
+        width: typeof window === 'undefined' ? 0 : window.innerWidth,
+        height: typeof window === 'undefined' ? 0 : window.innerHeight,
+    }));
 
     // 编辑态开启时持续测量这几颗控件的位置。用 rAF 而不是事件监听：
     // 位置变化的原因很多（别的动画、视口变化、播放状态、缝翻牌），逐条列会漏，
@@ -88,6 +113,7 @@ const ChromeEditOverlay: React.FC = () => {
     useEffect(() => {
         if (!editMode) {
             setBoxes([]);
+            setSelectedId(null);
             return undefined;
         }
         let frame = 0;
@@ -121,13 +147,21 @@ const ChromeEditOverlay: React.FC = () => {
                 }
                 return next;
             });
+            if (window.innerWidth !== viewport.width || window.innerHeight !== viewport.height) {
+                setViewport({ width: window.innerWidth, height: window.innerHeight });
+            }
             frame = window.requestAnimationFrame(measure);
         };
         frame = window.requestAnimationFrame(measure);
         return () => window.cancelAnimationFrame(frame);
-    }, [editMode, offsets, scale]);
+    }, [editMode, offsets, scale, viewport.height, viewport.width]);
 
     const entryById = useCallback((id: string) => ENTRIES.find(entry => entry.id === id), []);
+    const selectedBox = useMemo(
+        () => (selectedId ? boxes.find(box => box.id === selectedId) ?? null : null),
+        [boxes, selectedId],
+    );
+    const selectedMargins = selectedBox ? resolveChromeMargins(selectedBox, viewport) : null;
 
     const startDrag = useCallback((
         event: React.PointerEvent<HTMLElement>,
@@ -149,6 +183,7 @@ const ChromeEditOverlay: React.FC = () => {
             startRect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
         };
         setActiveId(entryId);
+        setSelectedId(entryId);
         event.currentTarget.setPointerCapture(event.pointerId);
         event.preventDefault();
     }, [entryById, offsets, scale]);
@@ -201,14 +236,54 @@ const ChromeEditOverlay: React.FC = () => {
         }
     }, []);
 
+    // 贴边 / 居中：按选框当前矩形算位移，叠到这一组自己的偏移上。
+    const snapSelected = useCallback((snapTarget: ChromeSnapTarget) => {
+        const box = selectedId ? boxes.find(item => item.id === selectedId) : null;
+        if (!box) return;
+        const entry = entryById(box.id);
+        if (!entry) return;
+        const delta = resolveChromeSnapDelta(snapTarget, box, {
+            width: window.innerWidth,
+            height: window.innerHeight,
+        });
+        const current = offsets[entry.offsetTarget];
+        if (delta.dx !== 0) setOffset(entry.offsetTarget, 'x', current.x + delta.dx);
+        if (delta.dy !== 0) setOffset(entry.offsetTarget, 'y', current.y + delta.dy);
+        // 框体立刻落到新位置，避免等下一帧测量时标签与框错位。
+        setBoxes(previous => previous.map(item => (
+            item.id === box.id
+                ? { ...item, left: item.left + delta.dx, top: item.top + delta.dy }
+                : item
+        )));
+    }, [boxes, entryById, offsets, selectedId, setOffset]);
+
     if (!editMode || boxes.length === 0) return null;
 
     return (
         <div className="pointer-events-none fixed inset-0 z-[400]" data-chrome-edit-overlay>
+            {/* 对齐网格：20px 细格 + 100px 粗格，编辑态专用，可开关。放在选框之下、墙之上。 */}
+            {gridOn && (
+                <div
+                    aria-hidden
+                    className="absolute inset-0 opacity-60"
+                    data-chrome-edit-grid
+                    style={{
+                        backgroundImage: [
+                            'linear-gradient(to right, color-mix(in srgb, var(--text-accent) 26%, transparent) 1px, transparent 1px)',
+                            'linear-gradient(to bottom, color-mix(in srgb, var(--text-accent) 26%, transparent) 1px, transparent 1px)',
+                            'linear-gradient(to right, color-mix(in srgb, var(--text-accent) 12%, transparent) 1px, transparent 1px)',
+                            'linear-gradient(to bottom, color-mix(in srgb, var(--text-accent) 12%, transparent) 1px, transparent 1px)',
+                        ].join(','),
+                        backgroundSize: '100px 100px, 100px 100px, 20px 20px, 20px 20px',
+                    }}
+                />
+            )}
+
             {boxes.map(box => {
                 const entry = entryById(box.id);
                 if (!entry) return null;
                 const isActive = activeId === box.id;
+                const isSelected = selectedId === box.id;
                 const handlers = {
                     onPointerMove: onDragMove,
                     onPointerUp: endDrag,
@@ -218,7 +293,11 @@ const ChromeEditOverlay: React.FC = () => {
                     <div key={box.id}>
                         {/* 框体：拖动改位置。touch-action:none 见文件头注释 —— 触屏上不写会被原生滚动抢走指针。 */}
                         <div
-                            className={`pointer-events-auto absolute cursor-move rounded-full border-2 border-dashed transition-colors ${isActive ? 'border-[var(--text-accent)]' : 'border-[color-mix(in_srgb,var(--text-primary)_45%,transparent)]'}`}
+                            className={`pointer-events-auto absolute cursor-move rounded-full border-2 border-dashed transition-colors ${
+                                isActive || isSelected
+                                    ? 'border-[var(--text-accent)]'
+                                    : 'border-[color-mix(in_srgb,var(--text-primary)_45%,transparent)]'
+                            }`}
                             style={{ left: box.left - 6, top: box.top - 6, width: box.width + 12, height: box.height + 12, touchAction: 'none' }}
                             onPointerDown={event => startDrag(event, box.id, 'move')}
                             onPointerMove={handlers.onPointerMove}
@@ -226,8 +305,13 @@ const ChromeEditOverlay: React.FC = () => {
                             onPointerCancel={handlers.onPointerCancel}
                             title={t(entry.labelKey)}
                         >
-                            <span className="absolute -top-5 left-0 whitespace-nowrap rounded bg-[var(--text-accent)] px-1 text-[10px] leading-4 text-[var(--text-on-accent,#fff)]">
-                                {t('options.wallChromeEditDragHint')}
+                            <span className={`absolute -top-5 left-0 whitespace-nowrap rounded px-1 text-[10px] leading-4 ${
+                                isActive || isSelected
+                                    ? 'bg-[var(--text-accent)] text-[var(--text-on-accent,#fff)]'
+                                    : 'bg-[color-mix(in_srgb,var(--bg-color,#0b0b0c)_78%,transparent)] text-[color:var(--text-primary)]'
+                            }`}
+                            >
+                                {t(entry.labelKey)}
                             </span>
                         </div>
                         {/* 右下角手柄：拖动改大小（四颗按钮共用的那一档比例）。 */}
@@ -245,6 +329,108 @@ const ChromeEditOverlay: React.FC = () => {
                     </div>
                 );
             })}
+
+            {/* 边距读数与工具栏合成一块：412px 宽的手机上，读数跟着框跑到屏幕底部会和
+                贴边条撞在一起（实测截图里糊成一团）。放在工具栏第二行，任何位置都不会打架，
+                拖动时数字照样实时跳。 */}
+            <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center px-2" style={{ paddingTop: 'max(6px, env(safe-area-inset-top))' }}>
+                <div
+                    className="pointer-events-auto flex max-w-full flex-col items-stretch gap-1 rounded-2xl border border-[color-mix(in_srgb,var(--text-primary)_18%,transparent)] bg-[color-mix(in_srgb,var(--bg-color,#0b0b0c)_78%,transparent)] px-1.5 py-1 shadow-[0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur"
+                    data-chrome-edit-toolbar
+                >
+                    <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+                        <button
+                            type="button"
+                            className={`flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-[12px] font-medium transition-colors ${
+                                gridOn
+                                    ? 'bg-[var(--text-accent)] text-[var(--text-on-accent,#fff)]'
+                                    : 'text-[color:var(--text-primary)] hover:bg-[color-mix(in_srgb,var(--text-primary)_10%,transparent)]'
+                            }`}
+                            aria-pressed={gridOn}
+                            onClick={() => setGrid(!gridOn)}
+                            title={t('options.wallChromeEditGridDesc')}
+                        >
+                            <Grid3x3 size={14} aria-hidden />
+                            {t('options.wallChromeEditGrid')}
+                        </button>
+                        <span className="mx-0.5 h-5 w-px shrink-0 bg-[color-mix(in_srgb,var(--text-primary)_18%,transparent)]" aria-hidden />
+                        <button
+                            type="button"
+                            className="flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-[12px] font-medium text-[color:var(--text-primary)] transition-colors hover:bg-[color-mix(in_srgb,var(--text-primary)_10%,transparent)]"
+                            onClick={cancelEdit}
+                        >
+                            <Undo2 size={14} aria-hidden />
+                            {t('options.wallChromeEditCancel')}
+                        </button>
+                        <button
+                            type="button"
+                            className="flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-[var(--text-accent)] px-3 text-[12px] font-semibold text-[var(--text-on-accent,#fff)]"
+                            onClick={() => setEditMode(false)}
+                        >
+                            <Check size={14} aria-hidden />
+                            {t('options.wallChromeEditDone')}
+                        </button>
+                    </div>
+                    {selectedBox && selectedMargins && (
+                        <div
+                            className="flex items-center justify-center gap-1.5 whitespace-nowrap px-1 text-[10.5px] leading-4 tabular-nums text-[color:color-mix(in_srgb,var(--text-primary)_72%,transparent)]"
+                            data-chrome-edit-margins
+                        >
+                            <span className="font-semibold text-[var(--text-accent)]">
+                                {t(entryById(selectedBox.id)?.labelKey ?? 'options.wallChromeEditDragHint')}
+                            </span>
+                            <span>{t('options.wallChromeMargins', {
+                                left: selectedMargins.left,
+                                top: selectedMargins.top,
+                                right: selectedMargins.right,
+                                bottom: selectedMargins.bottom,
+                            })}</span>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* 底部条：图标化，六个动作 + 取消选中。抬到 76px 以上，不压住右下角的工具与定位
+                （它们贴底 16–56px）。没选中时只剩一句提示。 */}
+            <div
+                className="pointer-events-auto absolute bottom-[76px] left-1/2 flex max-w-[94vw] -translate-x-1/2 items-center gap-0.5 whitespace-nowrap rounded-full border border-[color-mix(in_srgb,var(--text-primary)_16%,transparent)] bg-[color-mix(in_srgb,var(--bg-color,#0b0b0c)_74%,transparent)] px-1.5 py-1 shadow-[0_10px_30px_rgba(0,0,0,0.4)] backdrop-blur"
+                data-chrome-edit-actions
+            >
+                {selectedBox ? (
+                    <>
+                        {SNAP_ACTIONS.map(action => {
+                            const Icon = action.icon;
+                            const label = t(action.labelKey);
+                            return (
+                                <button
+                                    key={action.target}
+                                    type="button"
+                                    className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[color:var(--text-primary)] transition-colors hover:bg-[color-mix(in_srgb,var(--text-primary)_12%,transparent)]"
+                                    onClick={() => snapSelected(action.target)}
+                                    aria-label={label}
+                                    title={label}
+                                >
+                                    <Icon size={17} aria-hidden />
+                                </button>
+                            );
+                        })}
+                        <span className="mx-0.5 h-5 w-px shrink-0 bg-[color-mix(in_srgb,var(--text-primary)_16%,transparent)]" aria-hidden />
+                        <button
+                            type="button"
+                            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[color:var(--text-primary)] transition-colors hover:bg-[color-mix(in_srgb,var(--text-primary)_12%,transparent)]"
+                            onClick={() => setSelectedId(null)}
+                            aria-label={t('options.wallChromeEditDeselect')}
+                            title={t('options.wallChromeEditDeselect')}
+                        >
+                            <X size={15} aria-hidden />
+                        </button>
+                    </>
+                ) : (
+                    <span className="px-2 py-1 text-[11.5px] text-[color:color-mix(in_srgb,var(--text-primary)_70%,transparent)]">
+                        {t('options.wallChromeEditPickHint')}
+                    </span>
+                )}
+            </div>
         </div>
     );
 };

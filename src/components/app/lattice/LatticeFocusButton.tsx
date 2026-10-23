@@ -8,6 +8,7 @@ import { PRIMARY_MODIFIER_LABEL } from '../../../utils/platform';
 import WallToolsButton from '../../wall/WallToolsButton';
 import type { WallToolsQuickAction } from '../../wall/WallToolsRows';
 import { GridLocateButton } from '../playing-song-locator/GridLocateButton';
+import { LocateFloatingSlot } from '../playing-song-locator/LocateFloatingSlot';
 import type { LatticeTile } from './latticeModel';
 import { locatePlayingSongOnWall, useWallPageKey } from './wallLocate';
 
@@ -38,39 +39,45 @@ export default function LatticeFocusButton({ isDaylight, tiles, onGoHome }: { is
     } : undefined;
 
     return (
-        <WallToolsButton
-            idPrefix="lattice-tools"
-            label={t('home.latticeTools')}
-            isDaylight={isDaylight}
-            destination={destination}
-            entries={[]}
-            above={playingSongKey !== null ? (
-                <GridLocateButton
-                    isDaylight={isDaylight}
-                    accentColor="var(--text-accent)"
-                    isHere={isPlayingSongHere}
-                    isSeeking={isLocateAsked}
-                    title={t('playlist.locatePlaying')}
-                    onLocate={locatePlayingSongOnWall}
-                />
-            ) : undefined}
-            help={(
-                <>
-                    <li>
-                        <span>{t('home.latticeHelpPoster')}</span>
-                        <span className="lattice-tools-help-key"><kbd>ESC</kbd>{t('home.latticeHelpReturn')}</span>
-                    </li>
-                    <li><span>{t('home.latticeHelpMove')}</span></li>
-                    <li>
-                        <span>{t('home.latticeHelpCommands')}</span>
-                        <kbd>S</kbd>
-                    </li>
-                    <li>
-                        <span>{t('home.latticeHelpOpen')}</span>
-                        <kbd>{PRIMARY_MODIFIER_LABEL} + B</kbd>
-                    </li>
-                </>
+        <>
+            {/* 与工具按钮解绑：定位按钮有自己的锚点与偏移，拖工具时它不再跟着走。 */}
+            {playingSongKey !== null && (
+                <LocateFloatingSlot>
+                    <GridLocateButton
+                        floating
+                        isDaylight={isDaylight}
+                        accentColor="var(--text-accent)"
+                        isHere={isPlayingSongHere}
+                        isSeeking={isLocateAsked}
+                        title={t('playlist.locatePlaying')}
+                        onLocate={locatePlayingSongOnWall}
+                    />
+                </LocateFloatingSlot>
             )}
-        />
+            <WallToolsButton
+                idPrefix="lattice-tools"
+                label={t('home.latticeTools')}
+                isDaylight={isDaylight}
+                destination={destination}
+                entries={[]}
+                help={(
+                    <>
+                        <li>
+                            <span>{t('home.latticeHelpPoster')}</span>
+                            <span className="lattice-tools-help-key"><kbd>ESC</kbd>{t('home.latticeHelpReturn')}</span>
+                        </li>
+                        <li><span>{t('home.latticeHelpMove')}</span></li>
+                        <li>
+                            <span>{t('home.latticeHelpCommands')}</span>
+                            <kbd>S</kbd>
+                        </li>
+                        <li>
+                            <span>{t('home.latticeHelpOpen')}</span>
+                            <kbd>{PRIMARY_MODIFIER_LABEL} + B</kbd>
+                        </li>
+                    </>
+                )}
+            />
+        </>
     );
 }

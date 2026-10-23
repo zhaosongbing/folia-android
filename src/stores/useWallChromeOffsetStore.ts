@@ -53,8 +53,10 @@ export const WALL_CHROME_SIZE_TARGETS: readonly WallChromeSizeTarget[] = [
  *  真正把它挡在屏幕内的是拖动时按视口 clamp，不是这个数。
  *  这个上限只是防止存进一个离谱的值（比如拖拽事件错乱时的天文数字）。 */
 export const WALL_CHROME_OFFSET_MAX_PX = 2000;
-/** 设置里滑块的范围。比存储上限小：滑块负责微调，大跨度摆放交给拖动。 */
-export const WALL_CHROME_OFFSET_SLIDER_MAX_PX = 600;
+/** 设置里滑块的范围。比存储上限小：滑块负责微调，大跨度摆放交给拖动与贴边/居中。
+ *  取 1000 而不是原来的 600：贴边/居中会把偏移写到接近整屏（比如把按钮贴到底边约 -860），
+ *  滑块范围盖不住时那颗滑块会一直顶在端点、读数与滑块位置对不上。 */
+export const WALL_CHROME_OFFSET_SLIDER_MAX_PX = 1000;
 /** 缩放百分比的上下限与默认值。 */
 export const WALL_CHROME_SCALE_MIN_PERCENT = 80;
 export const WALL_CHROME_SCALE_MAX_PERCENT = 180;
@@ -64,6 +66,8 @@ const VISIBLE_PREFIX = 'wall_chrome_visible';
 /** 编辑模式的存储键。v2：换键即换默认值 —— 老键存着的 1 不再被读，
  *  0.7.21.19 起默认开启这件事对已经存过值的用户也一并作废（实测反馈：默认开着太扰民）。 */
 const EDIT_MODE_KEY = 'wall_chrome_edit_mode_v2';
+/** 编辑态的对齐网格线显隐。编辑态专用，所以独立于编辑开关记忆。 */
+const EDIT_GRID_KEY = 'wall_chrome_edit_grid';
 
 const OFFSET_PREFIX = 'wall_chrome_offset';
 /** 四颗按钮共用的缩放。v2 同理：老的每颗各一个键整体作废，统一到这一档。 */
@@ -148,15 +152,23 @@ type WallChromeOffsetStoreState = {
     /** 右下角工具按钮是否显示。默认显示。 */
     showToolsButton: boolean;
     /**
-     * 浮层位置的手动调整模式。开启后四颗按钮与信息条上下两部分外围出现可拖动的框：
-     * 拖框体改位置，拖右下角的手柄改大小。与播放页控制栏的定位模式同一套交互。
-     * 默认关闭（实测反馈：默认开着容易误触）。
+     * 浮层编辑态。开启后四颗按钮与信息条上下两部分外围出现可拖动的框，
+     * 顶部出现「取消 / 网格 / 完成」，选中一个框后底部出现贴边与居中。
+     * 默认关闭；「完成」保留改动，「取消」回到打开时的样子。
      */
     chromeEditMode: boolean;
+    /** 编辑态的对齐网格线。 */
+    chromeEditGrid: boolean;
+    /** 打开编辑态时记下的位置与大小，「取消」用它整体还原。未在编辑态时为 null。 */
+    chromeEditSnapshot: { offsets: Record<WallChromeOffsetTarget, WallChromeOffset>; scale: number } | null;
     handleSetOffset: (target: WallChromeOffsetTarget, axis: WallChromeOffsetAxis, value: number) => void;
     handleToggleLocateButton: (show: boolean) => void;
     handleToggleToolsButton: (show: boolean) => void;
+    /** 开关编辑态。打开时先存一份快照，关闭时保留改动（等于「完成」）。 */
     handleSetChromeEditMode: (enabled: boolean) => void;
+    /** 结束编辑并丢弃这次的全部改动，回到打开编辑态时的位置与大小。 */
+    handleCancelChromeEdit: () => void;
+    handleSetChromeEditGrid: (enabled: boolean) => void;
     /** 设置四颗按钮共用的比例。 */
     handleSetScale: (percent: number) => void;
     /** 把某一组（不传就是全部）的位置恢复成默认。 */
@@ -165,12 +177,35 @@ type WallChromeOffsetStoreState = {
     handleResetScale: () => void;
 };
 
+const initialOffsets = readAllOffsets();
+const initialScale = readScale();
+const initialEditMode = readEditMode();
+
+/** 深拷一份偏移，快照与当前值不能共用同一批对象（改动会互相带过去）。 */
+const cloneOffsets = (
+    source: Record<WallChromeOffsetTarget, WallChromeOffset>,
+): Record<WallChromeOffsetTarget, WallChromeOffset> => ({
+    wallBack: { ...source.wallBack },
+    wallLocate: { ...source.wallLocate },
+    wallTools: { ...source.wallTools },
+    seamHead: { ...source.seamHead },
+    seamDock: { ...source.seamDock },
+    ponder: { ...source.ponder },
+    statusToast: { ...source.statusToast },
+});
+
 export const useWallChromeOffsetStore = create<WallChromeOffsetStoreState>((set, get) => ({
-    offsets: readAllOffsets(),
-    scale: readScale(),
+    offsets: initialOffsets,
+    scale: initialScale,
     showLocateButton: readVisible('locate'),
     showToolsButton: readVisible('tools'),
-    chromeEditMode: readEditMode(),
+    chromeEditMode: initialEditMode,
+    chromeEditGrid: readNumber(EDIT_GRID_KEY) === 1,
+    // 编辑态是从存储里恢复出来的（上次没点完成/取消就退了应用）也一样要有快照，
+    // 否则这一轮的「取消」无处可还原，按钮会停在半路。
+    chromeEditSnapshot: initialEditMode
+        ? { offsets: cloneOffsets(initialOffsets), scale: initialScale }
+        : null,
     handleSetOffset: (target, axis, value) => {
         const clamped = clampOffset(value);
         writeNumber(offsetKey(target, axis), clamped);
@@ -194,10 +229,41 @@ export const useWallChromeOffsetStore = create<WallChromeOffsetStoreState>((set,
         set({ showToolsButton: show });
     },
     handleSetChromeEditMode: (enabled) => {
-        // 与 readEditMode 用同一把键（不带 visible 前缀）：读写的键不一致，
-        // 开关就永远不会被记住 —— 刷新一次又回到默认值。
         writeNumber(EDIT_MODE_KEY, enabled ? 1 : 0);
-        set({ chromeEditMode: enabled });
+        if (!enabled) {
+            set({ chromeEditMode: false, chromeEditSnapshot: null });
+            return;
+        }
+        // 打开时存快照：取消要能整份还原，包括期间改过的大小。
+        const { offsets, scale } = get();
+        set({
+            chromeEditMode: true,
+            chromeEditSnapshot: { offsets: cloneOffsets(offsets), scale },
+        });
+    },
+    handleCancelChromeEdit: () => {
+        const snapshot = get().chromeEditSnapshot;
+        writeNumber(EDIT_MODE_KEY, 0);
+        if (!snapshot) {
+            set({ chromeEditMode: false, chromeEditSnapshot: null });
+            return;
+        }
+        // 逐项写回存储，否则刷新之后又会拿到编辑中的值。
+        for (const target of WALL_CHROME_OFFSET_TARGETS) {
+            writeNumber(offsetKey(target, 'x'), snapshot.offsets[target].x);
+            writeNumber(offsetKey(target, 'y'), snapshot.offsets[target].y);
+        }
+        writeNumber(SCALE_KEY, snapshot.scale);
+        set({
+            offsets: snapshot.offsets,
+            scale: snapshot.scale,
+            chromeEditMode: false,
+            chromeEditSnapshot: null,
+        });
+    },
+    handleSetChromeEditGrid: (enabled) => {
+        writeNumber(EDIT_GRID_KEY, enabled ? 1 : 0);
+        set({ chromeEditGrid: enabled });
     },
     handleResetOffset: (target) => {
         const targets = target ? [target] : WALL_CHROME_OFFSET_TARGETS;

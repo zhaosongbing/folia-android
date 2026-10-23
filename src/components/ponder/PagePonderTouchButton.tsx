@@ -10,7 +10,7 @@ import { openCurrentPagePonder } from '../../services/ponder/pagePonderTarget';
 import type { Theme } from '../../types';
 import { ponderMotionTokens } from './ponderMotion';
 import { ponderLayerTokens, ponderWindowTokens } from './ponderTheme';
-import { scaledPx, useWallChromeOffsetStore, WALL_CHROME_SCALE_DEFAULT_PERCENT } from '../../stores/useWallChromeOffsetStore';
+import { scaledPx, useWallChromeOffsetStore } from '../../stores/useWallChromeOffsetStore';
 
 // src/components/ponder/PagePonderTouchButton.tsx
 // 触屏上代替 Ctrl+G 的入口。
@@ -33,7 +33,8 @@ const HOTSPOT_PAD_PX = 48;
 /** 按钮的基准位置与直径，与原来写死的 right-5 / top-5 / h-12 w-12 一致。 */
 const PONDER_BUTTON_BASE_RIGHT_PX = 20;
 const PONDER_BUTTON_BASE_TOP_PX = 20;
-const PONDER_BUTTON_BASE_SIZE_PX = 48;
+/** 基准 40：与另外三颗浮层按钮（返回 / 定位 / 工具）默认一样大（实测反馈）。 */
+const PONDER_BUTTON_BASE_SIZE_PX = 40;
 
 type PagePonderTouchButtonProps = {
     theme?: Theme;
@@ -61,9 +62,9 @@ const PagePonderTouchButton: React.FC<PagePonderTouchButtonProps> = ({ theme, is
     const ponderChrome: React.CSSProperties = {
         right: ponderRightPx,
         top: ponderTopPx,
-        ...(ponderScale !== WALL_CHROME_SCALE_DEFAULT_PERCENT
-            ? { width: ponderSizePx, height: ponderSizePx }
-            : {}),
+        // 始终给宽高：默认档也要是 40，否则按钮会缩到图标大小（内层是 h-full/w-full）。
+        width: ponderSizePx,
+        height: ponderSizePx,
     };
     // 热区跟着按钮走：位置和尺寸变了还按右上角 96px 判，按钮就被挪出了自己的热区，
     // 收起后再也点不回来。所以这里按「实际位置 + 尺寸 + 缓冲」现算。

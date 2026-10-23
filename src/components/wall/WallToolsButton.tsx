@@ -11,7 +11,7 @@ import { WallToolsQuickRow, WallToolsRow, type WallToolsEntry, type WallToolsQui
 import { useWallToolsCommonActions } from './useWallToolsCommonActions';
 import { WallToolsQueueIsland } from './WallToolsQueueIsland';
 import { useWallToolsHost } from './wallToolsHost';
-import { scaledPx, useWallChromeOffsetStore, WALL_CHROME_SCALE_DEFAULT_PERCENT } from '../../stores/useWallChromeOffsetStore';
+import { scaledPx, useWallChromeOffsetStore } from '../../stores/useWallChromeOffsetStore';
 import './WallToolsButton.css';
 
 // src/components/wall/WallToolsButton.tsx
@@ -103,10 +103,10 @@ export function WallToolsSurface({ idPrefix, label, isDaylight, destination, ent
         : null;
     // 按钮尺寸（SlideActionButton 的轨道、填充、图标都会等比缩放，不会出现「容器变大、
     // 滑轨还是老长度」）。面板与浮岛的宽度不受它影响：那是另一组宽度变量。
+    // 基准 40：四颗浮层按钮（返回 / 定位 / 工具 / 思索）默认一样大（实测反馈），
+    // 原先工具与思索是 48，比另两颗粗一圈。所以这里始终按 40 算，不再在默认档退回 48。
     const toolsScale = useWallChromeOffsetStore(state => state.scale);
-    const toolsSizePx = toolsScale !== WALL_CHROME_SCALE_DEFAULT_PERCENT
-        ? scaledPx(48, toolsScale)
-        : undefined;
+    const toolsSizePx = scaledPx(40, toolsScale);
     // stack 的 max-height 要减掉按钮此刻的底距（随底栏抬升量变），经 CSS 变量交给样式。
     const bottomVar = useTransform(bottomPx, value => `${value}px`);
     const host = useWallToolsHost();
