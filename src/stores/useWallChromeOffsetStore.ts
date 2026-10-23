@@ -68,6 +68,13 @@ const VISIBLE_PREFIX = 'wall_chrome_visible';
 const EDIT_MODE_KEY = 'wall_chrome_edit_mode_v2';
 /** 编辑态的对齐网格线显隐。编辑态专用，所以独立于编辑开关记忆。 */
 const EDIT_GRID_KEY = 'wall_chrome_edit_grid';
+/** 编辑态的背景蒙层（无 / 黑 / 白 / 灰）。压一层底色，按钮与背景的边界才看得清，
+ *  灰色尤其适合在彩色封面上判断白色按钮的实际位置。 */
+const EDIT_MASK_KEY = 'wall_chrome_edit_mask';
+
+/** 编辑态可选的背景蒙层。 */
+export type WallChromeEditMask = 'none' | 'black' | 'white' | 'gray';
+export const WALL_CHROME_EDIT_MASKS: readonly WallChromeEditMask[] = ['none', 'black', 'white', 'gray'];
 
 const OFFSET_PREFIX = 'wall_chrome_offset';
 /** 四颗按钮共用的缩放。v2 同理：老的每颗各一个键整体作废，统一到这一档。 */
@@ -116,6 +123,18 @@ const readOffset = (target: WallChromeOffsetTarget, axis: WallChromeOffsetAxis):
 const readScale = (): number =>
     clampScale(readNumber(SCALE_KEY) ?? WALL_CHROME_SCALE_DEFAULT_PERCENT);
 
+const readEditMask = (): WallChromeEditMask => {
+    if (typeof localStorage === 'undefined') return 'none';
+    try {
+        const raw = localStorage.getItem(EDIT_MASK_KEY);
+        return WALL_CHROME_EDIT_MASKS.includes(raw as WallChromeEditMask)
+            ? (raw as WallChromeEditMask)
+            : 'none';
+    } catch {
+        return 'none';
+    }
+};
+
 const readVisible = (key: string): boolean => {
     const stored = readNumber(`${VISIBLE_PREFIX}_${key}`);
     // 没存过就是默认显示
@@ -159,6 +178,8 @@ type WallChromeOffsetStoreState = {
     chromeEditMode: boolean;
     /** 编辑态的对齐网格线。 */
     chromeEditGrid: boolean;
+    /** 编辑态的背景蒙层。 */
+    chromeEditMask: WallChromeEditMask;
     /** 打开编辑态时记下的位置与大小，「取消」用它整体还原。未在编辑态时为 null。 */
     chromeEditSnapshot: { offsets: Record<WallChromeOffsetTarget, WallChromeOffset>; scale: number } | null;
     handleSetOffset: (target: WallChromeOffsetTarget, axis: WallChromeOffsetAxis, value: number) => void;
@@ -169,6 +190,7 @@ type WallChromeOffsetStoreState = {
     /** 结束编辑并丢弃这次的全部改动，回到打开编辑态时的位置与大小。 */
     handleCancelChromeEdit: () => void;
     handleSetChromeEditGrid: (enabled: boolean) => void;
+    handleSetChromeEditMask: (mask: WallChromeEditMask) => void;
     /** 设置四颗按钮共用的比例。 */
     handleSetScale: (percent: number) => void;
     /** 把某一组（不传就是全部）的位置恢复成默认。 */
@@ -201,6 +223,7 @@ export const useWallChromeOffsetStore = create<WallChromeOffsetStoreState>((set,
     showToolsButton: readVisible('tools'),
     chromeEditMode: initialEditMode,
     chromeEditGrid: readNumber(EDIT_GRID_KEY) === 1,
+    chromeEditMask: readEditMask(),
     // 编辑态是从存储里恢复出来的（上次没点完成/取消就退了应用）也一样要有快照，
     // 否则这一轮的「取消」无处可还原，按钮会停在半路。
     chromeEditSnapshot: initialEditMode
@@ -264,6 +287,16 @@ export const useWallChromeOffsetStore = create<WallChromeOffsetStoreState>((set,
     handleSetChromeEditGrid: (enabled) => {
         writeNumber(EDIT_GRID_KEY, enabled ? 1 : 0);
         set({ chromeEditGrid: enabled });
+    },
+    handleSetChromeEditMask: (mask) => {
+        if (typeof localStorage !== 'undefined') {
+            try {
+                localStorage.setItem(EDIT_MASK_KEY, mask);
+            } catch {
+                // 存储写不进去时至少让本次会话生效
+            }
+        }
+        set({ chromeEditMask: mask });
     },
     handleResetOffset: (target) => {
         const targets = target ? [target] : WALL_CHROME_OFFSET_TARGETS;

@@ -11,7 +11,11 @@ import { getStoredBoolean, getStoredString, setStoredBoolean } from './storagePr
 /** What the grid action button's leftward slide reaches. */
 export type GridActionButtonSlideTarget = 'filter' | 'command-palette';
 
+/** 墙面工具按钮的滑轨往哪边伸。缺省 left，与改动前一致。 */
+export type WallToolsSlideDirection = 'left' | 'right' | 'up' | 'down';
+
 const SLIDE_TARGET_KEY = 'grid_action_button_slide_target';
+const WALL_TOOLS_SLIDE_DIRECTION_KEY = 'wall_tools_slide_direction';
 const PALETTE_HOTKEY_KEY = 'grid_command_palette_hotkey';
 const QUEUE_PALETTE_KEEP_OPEN_KEY = 'queue_palette_keep_open';
 const CUSTOM_SHORTCUT_LETTER_KEY = 'custom_shortcut_letter';
@@ -20,6 +24,14 @@ const CUSTOM_SHORTCUT_COMMAND_KEY = 'custom_shortcut_command';
 const readSlideTarget = (): GridActionButtonSlideTarget => (
     getStoredString(SLIDE_TARGET_KEY, 'filter') === 'command-palette' ? 'command-palette' : 'filter'
 );
+
+const WALL_TOOLS_SLIDE_DIRECTIONS: readonly WallToolsSlideDirection[] = ['left', 'right', 'up', 'down'];
+
+/** 只认四个方向之一，其余一律回落到 left（老值是空的、或者被手改坏）。 */
+const readWallToolsSlideDirection = (): WallToolsSlideDirection => {
+    const stored = getStoredString(WALL_TOOLS_SLIDE_DIRECTION_KEY, 'left') as WallToolsSlideDirection;
+    return WALL_TOOLS_SLIDE_DIRECTIONS.includes(stored) ? stored : 'left';
+};
 
 /** Stored empty means "unset"; a single lower-case letter is the only other legal value. */
 const readShortcutLetter = (): string | null => {
@@ -40,6 +52,8 @@ const writeString = (key: string, value: string | null) => {
 
 export type InteractionSettingsState = {
     gridActionButtonSlideTarget: GridActionButtonSlideTarget;
+    /** 墙面工具按钮的滑轨方向。 */
+    wallToolsSlideDirection: WallToolsSlideDirection;
     /**
      * Whether bare `s` on a filtering surface opens the command list instead of being read as
      * filter input. Off by default: typing a letter on a grid has always meant "filter", and the
@@ -53,6 +67,7 @@ export type InteractionSettingsState = {
     customShortcutCommandId: string | null;
 
     setGridActionButtonSlideTarget: (target: GridActionButtonSlideTarget) => void;
+    setWallToolsSlideDirection: (direction: WallToolsSlideDirection) => void;
     handleToggleGridCommandPaletteHotkey: (enable: boolean) => void;
     setQueuePaletteKeepOpen: (enable: boolean) => void;
     setCustomShortcutLetter: (letter: string | null) => void;
@@ -61,6 +76,7 @@ export type InteractionSettingsState = {
 
 export const useInteractionSettingsStore = create<InteractionSettingsState>((set) => ({
     gridActionButtonSlideTarget: readSlideTarget(),
+    wallToolsSlideDirection: readWallToolsSlideDirection(),
     gridCommandPaletteHotkey: getStoredBoolean(PALETTE_HOTKEY_KEY, false),
     queuePaletteKeepOpen: getStoredBoolean(QUEUE_PALETTE_KEEP_OPEN_KEY, false),
     customShortcutLetter: readShortcutLetter(),
@@ -69,6 +85,10 @@ export const useInteractionSettingsStore = create<InteractionSettingsState>((set
     setGridActionButtonSlideTarget: (target) => {
         writeString(SLIDE_TARGET_KEY, target);
         set({ gridActionButtonSlideTarget: target });
+    },
+    setWallToolsSlideDirection: (direction) => {
+        writeString(WALL_TOOLS_SLIDE_DIRECTION_KEY, direction);
+        set({ wallToolsSlideDirection: direction });
     },
     handleToggleGridCommandPaletteHotkey: (enable) => {
         setStoredBoolean(PALETTE_HOTKEY_KEY, enable);

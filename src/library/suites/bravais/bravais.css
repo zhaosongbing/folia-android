@@ -203,7 +203,11 @@
 
 .bravais-seam-content .bravais-seam-dock,
 .bravais-seam-content .bravais-seam-actions,
-.bravais-seam-content .bravais-poster-bottom {
+.bravais-seam-content .bravais-poster-bottom,
+/* 工具坞的尾巴：窄缝（compact）里那颗「展开」，排在「我喜欢的音乐」与账户入口下面。
+   它不是 .bravais-seam-dock 的子元素，所以单独收进来跟着一起动 ——
+   否则下部分挪开了，这颗还留在原处，看起来像掉队。 */
+.bravais-seam-content .bravais-seam-dock-tail {
     transform: translate(var(--seam-dock-x, 0px), var(--seam-dock-y, 0px));
 }
 

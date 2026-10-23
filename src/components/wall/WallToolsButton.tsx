@@ -12,6 +12,7 @@ import { useWallToolsCommonActions } from './useWallToolsCommonActions';
 import { WallToolsQueueIsland } from './WallToolsQueueIsland';
 import { useWallToolsHost } from './wallToolsHost';
 import { scaledPx, useWallChromeOffsetStore } from '../../stores/useWallChromeOffsetStore';
+import { useInteractionSettingsStore } from '../../stores/useInteractionSettingsStore';
 import './WallToolsButton.css';
 
 // src/components/wall/WallToolsButton.tsx
@@ -107,6 +108,8 @@ export function WallToolsSurface({ idPrefix, label, isDaylight, destination, ent
     // 原先工具与思索是 48，比另两颗粗一圈。所以这里始终按 40 算，不再在默认档退回 48。
     const toolsScale = useWallChromeOffsetStore(state => state.scale);
     const toolsSizePx = scaledPx(40, toolsScale);
+    // 滑轨方向：贴着右边缘时「向左」会伸出屏幕，改成上/下更顺手（实测反馈，可自定义）。
+    const slideDirection = useInteractionSettingsStore(state => state.wallToolsSlideDirection);
     // stack 的 max-height 要减掉按钮此刻的底距（随底栏抬升量变），经 CSS 变量交给样式。
     const bottomVar = useTransform(bottomPx, value => `${value}px`);
     const host = useWallToolsHost();
@@ -265,6 +268,10 @@ export function WallToolsSurface({ idPrefix, label, isDaylight, destination, ent
                 accentColor="var(--text-accent)"
                 accentForeground="var(--text-on-accent, #ffffff)"
                 sizePx={toolsSizePx}
+                // 独立的一颗，不做「半个身子缩在后面」的平移：那个平移会把它推出屏幕右边几个像素，
+                // 编辑态的虚线框（量的是这个容器）也就跟着错开半个身位。
+                noPeek
+                direction={slideDirection}
             />
         </motion.div>
     );

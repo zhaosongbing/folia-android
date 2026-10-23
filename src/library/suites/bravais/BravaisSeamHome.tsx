@@ -393,7 +393,9 @@ const BravaisSeamHome: React.FC<{
                     menuShortcuts={shortcuts && !shortcutsInColumn ? shortcuts : null} onOpenShortcut={openShortcut} />
             )}
             {compact && (
-                <button type="button" className="bravais-seam-icon" data-bravais-seam-action="expand" onClick={expand}
+                // 这颗「展开」按钮是工具坞的尾巴（在「我喜欢的音乐」与账户入口下面），
+                // 不在 .bravais-seam-dock 里，所以要自己带上同一个位移类，跟着下部分一起动。
+                <button type="button" className="bravais-seam-icon bravais-seam-dock-tail" data-bravais-seam-action="expand" onClick={expand}
                     aria-label={t('libraryBravais.seamExpand')} title={t('libraryBravais.seamExpand')}>
                     <Maximize2 aria-hidden />
                 </button>

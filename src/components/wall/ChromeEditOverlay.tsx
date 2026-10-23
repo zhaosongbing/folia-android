@@ -22,11 +22,13 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlignCenterHorizontal, AlignCenterVertical, ArrowDownToLine, ArrowLeftToLine, ArrowRightToLine, ArrowUpToLine, Check, Grid3x3, Undo2, X } from 'lucide-react';
+import { AlignCenterHorizontal, AlignCenterVertical, ArrowDown, ArrowDownToLine, ArrowLeft, ArrowLeftToLine, ArrowRight, ArrowRightToLine, ArrowUp, ArrowUpToLine, Check, Contrast, Grid3x3, Undo2, X } from 'lucide-react';
 import {
     useWallChromeOffsetStore,
+    WALL_CHROME_EDIT_MASKS,
     WALL_CHROME_SCALE_MAX_PERCENT,
     WALL_CHROME_SCALE_MIN_PERCENT,
+    type WallChromeEditMask,
     type WallChromeOffsetTarget,
     type WallChromeSizeTarget,
 } from '../../stores/useWallChromeOffsetStore';
@@ -84,17 +86,45 @@ const SNAP_ACTIONS: ReadonlyArray<{ target: ChromeSnapTarget; labelKey: string; 
     { target: 'centerY', labelKey: 'options.wallChromeSnapCenterY', icon: AlignCenterVertical },
 ];
 
+/**
+ * 像素级微调：每次 1px，按住不放先等 400ms 再每 60ms 走一格。
+ * 拖动只能粗放到「差不多」，对齐两颗按钮的边、或者把它摆到网格线上，需要的是键盘方向键那样的步进。
+ */
+const NUDGE_ACTIONS: ReadonlyArray<{ dx: number; dy: number; labelKey: string; icon: typeof ArrowLeft }> = [
+    { dx: -1, dy: 0, labelKey: 'options.wallChromeNudgeLeft', icon: ArrowLeft },
+    { dx: 0, dy: -1, labelKey: 'options.wallChromeNudgeUp', icon: ArrowUp },
+    { dx: 0, dy: 1, labelKey: 'options.wallChromeNudgeDown', icon: ArrowDown },
+    { dx: 1, dy: 0, labelKey: 'options.wallChromeNudgeRight', icon: ArrowRight },
+];
+
+/** 蒙层的样子：压一层底色，让浮层的边界从背景里浮出来。 */
+const MASK_STYLES: Record<WallChromeEditMask, React.CSSProperties> = {
+    none: { backgroundColor: 'transparent' },
+    black: { backgroundColor: 'rgba(0, 0, 0, 0.55)' },
+    white: { backgroundColor: 'rgba(255, 255, 255, 0.62)' },
+    gray: { backgroundColor: 'rgba(128, 128, 128, 0.55)' },
+};
+
+const MASK_LABEL_KEYS: Record<WallChromeEditMask, string> = {
+    none: 'options.wallChromeMaskNone',
+    black: 'options.wallChromeMaskBlack',
+    white: 'options.wallChromeMaskWhite',
+    gray: 'options.wallChromeMaskGray',
+};
+
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 const ChromeEditOverlay: React.FC = () => {
     const { t } = useTranslation();
     const editMode = useWallChromeOffsetStore(state => state.chromeEditMode);
     const gridOn = useWallChromeOffsetStore(state => state.chromeEditGrid);
+    const mask = useWallChromeOffsetStore(state => state.chromeEditMask);
     const offsets = useWallChromeOffsetStore(state => state.offsets);
     const scale = useWallChromeOffsetStore(state => state.scale);
     const setOffset = useWallChromeOffsetStore(state => state.handleSetOffset);
     const setScale = useWallChromeOffsetStore(state => state.handleSetScale);
     const setGrid = useWallChromeOffsetStore(state => state.handleSetChromeEditGrid);
+    const setMask = useWallChromeOffsetStore(state => state.handleSetChromeEditMask);
     const setEditMode = useWallChromeOffsetStore(state => state.handleSetChromeEditMode);
     const cancelEdit = useWallChromeOffsetStore(state => state.handleCancelChromeEdit);
 
@@ -102,6 +132,8 @@ const ChromeEditOverlay: React.FC = () => {
     const [activeId, setActiveId] = useState<string | null>(null);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const dragRef = useRef<DragState | null>(null);
+    /** 像素微调的长按连发：延时启动与连发两个定时器。 */
+    const nudgeTimersRef = useRef<{ delay: number | null; repeat: number | null }>({ delay: null, repeat: null });
     const [viewport, setViewport] = useState(() => ({
         width: typeof window === 'undefined' ? 0 : window.innerWidth,
         height: typeof window === 'undefined' ? 0 : window.innerHeight,
@@ -257,11 +289,59 @@ const ChromeEditOverlay: React.FC = () => {
         )));
     }, [boxes, entryById, offsets, selectedId, setOffset]);
 
+    // —— 像素微调 ——
+    // 每次 1px。读的是 store 的当前值而不是这次渲染闭包里的 offsets：
+    // 长按连发时闭包是旧的，连加的会是同一个基准，按钮会「一顿一顿」或者根本不动。
+    const applyNudge = useCallback((entryId: string, dx: number, dy: number) => {
+        const entry = ENTRIES.find(item => item.id === entryId);
+        if (!entry) return;
+        const state = useWallChromeOffsetStore.getState();
+        const current = state.offsets[entry.offsetTarget];
+        if (dx !== 0) state.handleSetOffset(entry.offsetTarget, 'x', current.x + dx);
+        if (dy !== 0) state.handleSetOffset(entry.offsetTarget, 'y', current.y + dy);
+        setBoxes(previous => previous.map(box => (
+            box.id === entryId ? { ...box, left: box.left + dx, top: box.top + dy } : box
+        )));
+    }, []);
+
+    const clearNudgeTimers = useCallback(() => {
+        if (nudgeTimersRef.current.delay !== null) {
+            window.clearTimeout(nudgeTimersRef.current.delay);
+            nudgeTimersRef.current.delay = null;
+        }
+        if (nudgeTimersRef.current.repeat !== null) {
+            window.clearInterval(nudgeTimersRef.current.repeat);
+            nudgeTimersRef.current.repeat = null;
+        }
+    }, []);
+
+    const startNudge = useCallback((entryId: string, dx: number, dy: number) => {
+        clearNudgeTimers();
+        applyNudge(entryId, dx, dy);
+        // 第一下立刻走一格；按住 400ms 后开始连发，每 60ms 一格（约 16px/s，够快又不飘）。
+        nudgeTimersRef.current.delay = window.setTimeout(() => {
+            nudgeTimersRef.current.delay = null;
+            nudgeTimersRef.current.repeat = window.setInterval(() => applyNudge(entryId, dx, dy), 60);
+        }, 400);
+    }, [applyNudge, clearNudgeTimers]);
+
+    // 退出编辑态或卸载时把连发停掉，否则定时器会在后台一直写偏移。
+    useEffect(() => {
+        if (!editMode) clearNudgeTimers();
+        return clearNudgeTimers;
+    }, [clearNudgeTimers, editMode]);
+
     if (!editMode || boxes.length === 0) return null;
 
     return (
         <div className="pointer-events-none fixed inset-0 z-[400]" data-chrome-edit-overlay>
-            {/* 对齐网格：20px 细格 + 100px 粗格，编辑态专用，可开关。放在选框之下、墙之上。 */}
+            {/* 背景蒙层：黑 / 白 / 灰三档（外加「无」）。压在墙与缝之上、选框之下，
+                按钮与背景的边界从封面的颜色里浮出来，贴边与对齐时才好判断。 */}
+            {mask !== 'none' && (
+                <div aria-hidden data-chrome-edit-mask={mask} className="absolute inset-0" style={MASK_STYLES[mask]} />
+            )}
+
+            {/* 对齐网格：20px 细格 + 100px 粗格，编辑态专用，可开关。放在蒙层之上、选框之下。 */}
             {gridOn && (
                 <div
                     aria-hidden
@@ -353,6 +433,26 @@ const ChromeEditOverlay: React.FC = () => {
                             <Grid3x3 size={14} aria-hidden />
                             {t('options.wallChromeEditGrid')}
                         </button>
+                        {/* 蒙层：点一下循环 无 → 黑 → 白 → 灰 → 无。
+                            只在编辑态生效，退出编辑就没了，所以不必给「关掉」另留一个控件。 */}
+                        <button
+                            type="button"
+                            className={`flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-[12px] font-medium transition-colors ${
+                                mask === 'none'
+                                    ? 'text-[color:var(--text-primary)] hover:bg-[color-mix(in_srgb,var(--text-primary)_10%,transparent)]'
+                                    : 'bg-[color-mix(in_srgb,var(--text-primary)_16%,transparent)] text-[color:var(--text-primary)]'
+                            }`}
+                            onClick={() => {
+                                const index = WALL_CHROME_EDIT_MASKS.indexOf(mask);
+                                setMask(WALL_CHROME_EDIT_MASKS[(index + 1) % WALL_CHROME_EDIT_MASKS.length]);
+                            }}
+                            title={t('options.wallChromeEditMaskDesc')}
+                            aria-label={`${t('options.wallChromeEditMask')} ${t(MASK_LABEL_KEYS[mask])}`}
+                        >
+                            <Contrast size={14} aria-hidden />
+                            {t('options.wallChromeEditMask')}
+                            <span className="opacity-60">{t(MASK_LABEL_KEYS[mask])}</span>
+                        </button>
                         <span className="mx-0.5 h-5 w-px shrink-0 bg-[color-mix(in_srgb,var(--text-primary)_18%,transparent)]" aria-hidden />
                         <button
                             type="button"
@@ -390,15 +490,47 @@ const ChromeEditOverlay: React.FC = () => {
                 </div>
             </div>
 
-            {/* 底部条：图标化，六个动作 + 取消选中。抬到 76px 以上，不压住右下角的工具与定位
+            {/* 底部条：选中后两行 —— 上行是像素微调（1px 一格，按住连发），
+                下行是贴边 / 居中 / 取消选中。抬到 76px 以上，不压住右下角的工具与定位
                 （它们贴底 16–56px）。没选中时只剩一句提示。 */}
             <div
-                className="pointer-events-auto absolute bottom-[76px] left-1/2 flex max-w-[94vw] -translate-x-1/2 items-center gap-0.5 whitespace-nowrap rounded-full border border-[color-mix(in_srgb,var(--text-primary)_16%,transparent)] bg-[color-mix(in_srgb,var(--bg-color,#0b0b0c)_74%,transparent)] px-1.5 py-1 shadow-[0_10px_30px_rgba(0,0,0,0.4)] backdrop-blur"
+                className="pointer-events-auto absolute bottom-[76px] left-1/2 flex max-w-[94vw] -translate-x-1/2 flex-col items-stretch gap-1 whitespace-nowrap rounded-2xl border border-[color-mix(in_srgb,var(--text-primary)_16%,transparent)] bg-[color-mix(in_srgb,var(--bg-color,#0b0b0c)_74%,transparent)] px-1.5 py-1 shadow-[0_10px_30px_rgba(0,0,0,0.4)] backdrop-blur"
                 data-chrome-edit-actions
             >
                 {selectedBox ? (
                     <>
-                        {SNAP_ACTIONS.map(action => {
+                        <div className="flex items-center justify-center gap-0.5" data-chrome-edit-nudge>
+                            <span className="pl-1 pr-0.5 text-[10px] leading-4 text-[color:color-mix(in_srgb,var(--text-primary)_60%,transparent)]">
+                                {t('options.wallChromeEditNudge')}
+                            </span>
+                            {NUDGE_ACTIONS.map(action => {
+                                const Icon = action.icon;
+                                const label = t(action.labelKey);
+                                return (
+                                    <button
+                                        key={action.labelKey}
+                                        type="button"
+                                        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[color:var(--text-primary)] transition-colors hover:bg-[color-mix(in_srgb,var(--text-primary)_12%,transparent)] active:bg-[color-mix(in_srgb,var(--text-primary)_20%,transparent)]"
+                                        style={{ touchAction: 'none' }}
+                                        // 按下即走一格，按住连发；抬起 / 移出 / 取消都停。
+                                        onPointerDown={event => {
+                                            event.preventDefault();
+                                            event.currentTarget.setPointerCapture?.(event.pointerId);
+                                            startNudge(selectedBox.id, action.dx, action.dy);
+                                        }}
+                                        onPointerUp={clearNudgeTimers}
+                                        onPointerCancel={clearNudgeTimers}
+                                        onPointerLeave={clearNudgeTimers}
+                                        aria-label={label}
+                                        title={label}
+                                    >
+                                        <Icon size={16} aria-hidden />
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <div className="flex items-center justify-center gap-0.5">
+                            {SNAP_ACTIONS.map(action => {
                             const Icon = action.icon;
                             const label = t(action.labelKey);
                             return (
@@ -424,6 +556,7 @@ const ChromeEditOverlay: React.FC = () => {
                         >
                             <X size={15} aria-hidden />
                         </button>
+                        </div>
                     </>
                 ) : (
                     <span className="px-2 py-1 text-[11.5px] text-[color:color-mix(in_srgb,var(--text-primary)_70%,transparent)]">

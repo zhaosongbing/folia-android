@@ -21,6 +21,7 @@ const O = {
     pinned: option(PALETTE, 'pinnedCommandSlots', 'options.pinnedCommands'),
     shortcut: option(PALETTE, 'customShortcut', 'options.customShortcut'),
     slideTarget: option(GRIDS, 'gridSlideTarget', 'options.gridSlideTarget'),
+    wallToolsSlide: option(GRIDS, 'wallToolsSlideDirection', 'options.wallToolsSlideDirection'),
     paletteHotkey: option(GRIDS, 'gridPaletteHotkey', 'options.gridPaletteHotkey'),
 };
 
@@ -34,10 +35,12 @@ const InteractionPage: React.FC = () => {
     })));
     const interaction = useInteractionSettingsStore(useShallow(state => ({
         slideTarget: state.gridActionButtonSlideTarget,
+        wallToolsSlide: state.wallToolsSlideDirection,
         paletteHotkey: state.gridCommandPaletteHotkey,
         shortcutLetter: state.customShortcutLetter,
         shortcutCommandId: state.customShortcutCommandId,
         setSlideTarget: state.setGridActionButtonSlideTarget,
+        setWallToolsSlide: state.setWallToolsSlideDirection,
         setPaletteHotkey: state.handleToggleGridCommandPaletteHotkey,
         setShortcutLetter: state.setCustomShortcutLetter,
         setShortcutCommandId: state.setCustomShortcutCommandId,
@@ -118,6 +121,19 @@ const InteractionPage: React.FC = () => {
                 </Row>
                 <Row option={O.paletteHotkey} hint={t('options.gridPaletteHotkeyDesc')}>
                     <Toggle checked={interaction.paletteHotkey} onChange={interaction.setPaletteHotkey} />
+                </Row>
+                {/* 墙面工具按钮的滑轨方向：贴着右边缘时向左会伸出屏幕，向上/向下更顺手。 */}
+                <Row option={O.wallToolsSlide} note={t('options.wallToolsSlideDirectionDesc')}>
+                    <Segmented
+                        value={interaction.wallToolsSlide}
+                        options={[
+                            { value: 'left', label: t('options.wallToolsSlideLeft') },
+                            { value: 'right', label: t('options.wallToolsSlideRight') },
+                            { value: 'up', label: t('options.wallToolsSlideUp') },
+                            { value: 'down', label: t('options.wallToolsSlideDown') },
+                        ]}
+                        onChange={interaction.setWallToolsSlide}
+                    />
                 </Row>
             </FoldedGroup>
         </>
