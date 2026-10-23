@@ -5,6 +5,24 @@
 
 /* ---- the focus mark: one ring in the accent colour, for whatever the keyboard reaches. Text fields
    mark focus with their border and are left out. */
+
+/* ---- 高斯模糊：窗口面板之外，选项卡片 / 左侧列表 / 弹出的列表也一起透（实测反馈：
+   设置里的选项与列表都要毛玻璃）。半径与面板同一个来源 —— SettingsModal 把
+   --st-glass-filter 写在窗口上，设置里调模糊度时这一层跟着变；0 = none（回到纯色）。 */
+.st-glass {
+    backdrop-filter: var(--st-glass-filter, none);
+    -webkit-backdrop-filter: var(--st-glass-filter, none);
+}
+
+/* 选项卡片：面板已经是一层玻璃，卡片再薄一点，背后的墙才透得过来。 */
+.st-glass-card {
+    background-color: color-mix(in srgb, var(--st-card) 72%, transparent);
+}
+
+/* 弹出的列表（下拉、更多）：菜单本身也要能看见背后模糊过的内容。 */
+.st-glass-pop {
+    background-color: color-mix(in srgb, var(--st-menu) 84%, transparent);
+}
 .st-window :focus-visible:not(input, textarea, select) {
     outline: 2px solid var(--st-accent);
     outline-offset: 2px;

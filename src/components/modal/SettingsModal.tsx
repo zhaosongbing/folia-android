@@ -1009,9 +1009,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         ...(settingsBlurPx > 0
             ? { backdropFilter: `blur(${settingsBlurPx}px)`, WebkitBackdropFilter: `blur(${settingsBlurPx}px)` }
             : {}),
-    };
+        // 卡片、侧栏、弹出的列表都吃这一层（kit.css 的 .st-glass）：同一处滑杆，
+        // 面板与里面的每一层一起变，不会出现「外壳透了、选项还是实心板」。
+        '--st-glass-filter': settingsBlurPx > 0 ? `blur(${settingsBlurPx}px)` : 'none',
+    } as React.CSSProperties;
     const sideGlassStyle: React.CSSProperties = {
         backgroundColor: `color-mix(in srgb, var(--st-side) ${settingsOpacityPercent}%, transparent)`,
+        ...(settingsBlurPx > 0
+            ? { backdropFilter: `blur(${settingsBlurPx}px)`, WebkitBackdropFilter: `blur(${settingsBlurPx}px)` }
+            : {}),
     };
     const { activeAnchorId, scrollToAnchor } = useSettingsScrollSpy({
         containerRef: contentScrollRef,

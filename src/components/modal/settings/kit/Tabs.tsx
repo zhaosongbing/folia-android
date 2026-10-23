@@ -75,7 +75,9 @@ export const Tabs: React.FC<TabsProps> = ({ tabs, activeId, onSelect, action, co
     };
 
     return (
-        <div className="flex border-b border-[var(--st-line)]">
+        // 标签条下面那条通栏细线去掉了（实测反馈：删掉红圈里那条线）。
+        // 选中态由文字颜色与指示线表达，不再靠一条把窗口切开的横线。
+        <div className="flex">
             {/* layoutScroll: the line is measured inside a strip that may be scrolled sideways. */}
             <motion.div
                 ref={stripRef}

@@ -188,7 +188,7 @@ const BravaisSeamPoster: React.FC<{ layer: BravaisLayer; actions: BravaisSeamAct
             {/* 文字与按钮：倾斜时整块缩进安全区（四个角不转出屏幕）；上面的色块、颗粒与细线不缩，转出去也无妨。 */}
             <div className="bravais-poster-ui">
                 <div className="bravais-poster-top">
-                    <div className="bravais-seam-crumbs">
+                    <div className="bravais-seam-crumbs" data-seam-part="head">
                         {layer.onDone && (
                             <button type="button" className="bravais-seam-back" data-bravais-seam-action="back" onClick={layer.onDone}
                                 aria-label={t('libraryBravais.seamBack')} title={t('libraryBravais.seamBack')}>
@@ -211,7 +211,7 @@ const BravaisSeamPoster: React.FC<{ layer: BravaisLayer; actions: BravaisSeamAct
                     <h2 className="bravais-poster-name" data-bravais-poster-name data-bravais-seam-title data-text={name}>{name}</h2>
                 </div>
 
-                <div className="bravais-poster-bottom">
+                <div className="bravais-poster-bottom" data-seam-part="dock">
                     {/* 统计已是「关于艺术家」的附注：相同时元数据行不重复（过滤中是匹配数，照常显示）。 */}
                     {seam.meta && !(artist?.stats && artist.stats === seam.meta) && (
                         <BravaisSeamFlipText as="div" flipKey={seam.meta} className="bravais-poster-meta">{seam.meta}</BravaisSeamFlipText>

@@ -145,7 +145,7 @@ export const BravaisSeamCollectionMenu: React.FC<{
     return (
         <>
             <div ref={anchorRef} className="bravais-seam-more-anchor" onKeyDown={onKeyDown}>
-            <div className="bravais-seam-actions">
+            <div className="bravais-seam-actions" data-seam-part="dock">
                 {collection?.listLabel && onOpenList && (
                     <button type="button" className="bravais-chrome-button" data-bravais-seam-action="list" onClick={onOpenList}>
                         <List aria-hidden />{collection.listLabel}

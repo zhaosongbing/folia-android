@@ -7,8 +7,10 @@ import type { SettingsGroupDef } from './options';
 // A group of rows: a small heading over one card. The group registers as a settings anchor, which
 // gives it a tab in the page header and makes it a place a link or a search hit can land.
 
-/** The card rows sit in; the folded group draws the same one. st-card is what a row's hairline looks for. */
-export const GROUP_CARD_CLASS = 'st-card overflow-hidden rounded-xl bg-[var(--st-card)] shadow-[0_0_0_1px_var(--st-line)]';
+/** The card rows sit in; the folded group draws the same one. st-card is what a row's hairline looks for.
+ *  st-glass / st-glass-card 让卡片自己也是一层毛玻璃（见 kit.css）：面板是玻璃、卡片是全白，
+ *  看起来就成了一块实心板压在玻璃上。 */
+export const GROUP_CARD_CLASS = 'st-card st-glass st-glass-card overflow-hidden rounded-xl shadow-[0_0_0_1px_var(--st-line)]';
 
 /** Space above a group; the first one on a page sits a little closer, under the header's hairline. */
 export const GROUP_SPACING_CLASS = 'mt-7 first:mt-5';

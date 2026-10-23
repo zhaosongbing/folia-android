@@ -161,7 +161,7 @@ export const Popover: React.FC<PopoverProps> = ({
                 // It holds focus without a mark of its own.
                 outline: 'none',
             }}
-            className={`st-pop st-scroll absolute z-30 flex flex-col overflow-y-auto overscroll-contain rounded-[10px] bg-[var(--st-menu)] text-[color:var(--st-t1)] shadow-[0_14px_36px_rgba(0,0,0,0.34),0_0_0_1px_var(--st-line2)] ${fill ? '' : 'w-max max-w-[calc(100%-16px)] '}${className}`}
+            className={`st-pop st-glass st-glass-pop st-scroll absolute z-30 flex flex-col overflow-y-auto overscroll-contain rounded-[10px] text-[color:var(--st-t1)] shadow-[0_14px_36px_rgba(0,0,0,0.34),0_0_0_1px_var(--st-line2)] ${fill ? '' : 'w-max max-w-[calc(100%-16px)] '}${className}`}
         >
             {children}
         </div>,

@@ -83,7 +83,7 @@ const FullSeam: React.FC<{ layer: BravaisLayer; depth: number; actions: BravaisS
             {/* 信息条上部分整体位移：与首页窄缝的 home-head 用同一组设置（seamHead），
                 进集合页不会把用户调好的位置丢掉。 crumbs 自己没有 transform，用 translate
                 不会和任何动效打架。 */}
-            <div className="bravais-seam-crumbs">
+            <div className="bravais-seam-crumbs" data-seam-part="head">
                 {layer.onDone && (
                     <button type="button" className="bravais-seam-back" data-bravais-seam-action="back" onClick={layer.onDone}
                         aria-label={t('libraryBravais.seamBack')} title={t('libraryBravais.seamBack')}>
@@ -108,7 +108,7 @@ const FullSeam: React.FC<{ layer: BravaisLayer; depth: number; actions: BravaisS
             {collection && <BravaisSeamCollectionMeta collection={collection} />}
             {seam.status && <BravaisSeamFlipText as="div" flipKey={seam.status} className="bravais-seam-status" data-bravais-seam-status>{seam.status}</BravaisSeamFlipText>}
             {collection?.status && <BravaisSeamStatusLine status={collection.status} />}
-            <div className="bravais-seam-actions is-scope">
+            <div className="bravais-seam-actions is-scope" data-seam-part="dock">
                 {seam.onPlayScope && (
                     <button type="button" className="bravais-chrome-button is-primary" data-bravais-seam-action="play-scope" onClick={seam.onPlayScope}>
                         <Play aria-hidden />{seam.scopeLabels?.play ?? t('libraryBravais.playAll')}

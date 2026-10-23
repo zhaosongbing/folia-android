@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import type { LucideIcon } from 'lucide-react';
 
@@ -129,8 +129,10 @@ export const SlideActionButton: React.FC<SlideActionButtonProps> = ({
 }) => {
     const [showGuideLine, setShowGuideLine] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
-    const gestureRef = useRef<{ startX: number; startY: number; triggered: boolean } | null>(null);
+    const gestureRef = useRef<{ pointerId: number; startX: number; startY: number; triggered: boolean } | null>(null);
     const suppressClickRef = useRef(false);
+    /** 这次拖动挂在 window 上的监听；松手 / 取消 / 卸载时摘掉。 */
+    const detachRef = useRef<(() => void) | null>(null);
     const buttonRef = useRef<HTMLButtonElement>(null);
     const trackEndIconRef = useRef<HTMLDivElement>(null);
     const trackFillRef = useRef<HTMLDivElement>(null);
@@ -262,10 +264,91 @@ export const SlideActionButton: React.FC<SlideActionButtonProps> = ({
         }
     };
 
-    const clearGesture = () => {
+    /** 结束这次拖动（松手 / 取消 / 窗口失焦都走这里）。 */
+    const finishGesture = () => {
+        const gesture = gestureRef.current;
+        detachRef.current?.();
+        detachRef.current = null;
         gestureRef.current = null;
+        setIsDragging(false);
+        // 已经滑出去了：那一下的复位与飞出动画 resetDragFeedback('trigger') 已经做过，
+        // 这里再来一次会把还没播完的动画掐掉（松手后「闪一下」的来源）。
+        if (gesture?.triggered) return;
         resetDragFeedback();
     };
+
+    /** 一次拖动里唯一更新位移的地方：读 ref 里的起点，所以父级重渲染不会打断它。 */
+    const trackDrag = (clientX: number, clientY: number) => {
+        const gesture = gestureRef.current;
+        if (!gesture || gesture.triggered) return;
+        const deltaX = clientX - gesture.startX;
+        const deltaY = clientY - gesture.startY;
+        const primary = geometry.axis === 'x' ? deltaX : deltaY;
+        const secondary = geometry.axis === 'x' ? deltaY : deltaX;
+        setDragFeedback(primary);
+        // 主轴走够距离、且明确压过副轴，才算滑到位（斜着划不会误触）。
+        if (primary * geometry.sign >= TRIGGER_DISTANCE && Math.abs(primary) > Math.abs(secondary) * 1.2) {
+            gesture.triggered = true;
+            suppressClickRef.current = true;
+            resetDragFeedback('trigger', primary);
+            // 先把监听摘了再喊回调：回调常常把面板打开、把按钮卸载掉，
+            // 留着监听会在卸载后继续吃指针事件（下一颗按钮就「没反应」）。
+            detachRef.current?.();
+            detachRef.current = null;
+            onSlide();
+        }
+    };
+
+    const beginGesture = (event: React.PointerEvent<HTMLButtonElement>) => {
+        if (disabled) return;
+        // 只认主指针：第二根手指按下不顶掉正在拖的那一根。
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        detachRef.current?.();
+        gestureRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, triggered: false };
+        suppressClickRef.current = false;
+        setShowGuideLine(false);
+        setIsDragging(true);
+        setDragFeedback(0);
+        try {
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+        } catch {
+            // 拿不到指针捕获也能拖：监听挂在 window 上，不靠元素上的事件。
+        }
+
+        // 监听挂在 window 上，不挂在按钮上（实测反馈：长按拖动经常断触）。
+        // 按钮在手势中途被父级重渲染、被移到别处，或者指针被墙面的滚动 / 长按选择抢走时，
+        // 元素上的 pointermove 就不再来了；window 上的还会来。按 pointerId 只跟这一根手指，
+        // 别的手指按到屏幕不会把这次拖动清掉。
+        const move = (native: PointerEvent) => {
+            if (native.pointerId !== gestureRef.current?.pointerId) return;
+            // 触屏上拖出按钮范围后浏览器仍可能想滚页面，这里顺手压住默认行为。
+            if (native.cancelable && Math.abs(native.clientX - (gestureRef.current?.startX ?? 0)) > 4) {
+                native.preventDefault();
+            }
+            trackDrag(native.clientX, native.clientY);
+        };
+        const end = (native: PointerEvent) => {
+            if (native.pointerId !== gestureRef.current?.pointerId) return;
+            finishGesture();
+        };
+        const onBlur = () => finishGesture();
+        window.addEventListener('pointermove', move, { passive: false });
+        window.addEventListener('pointerup', end);
+        window.addEventListener('pointercancel', end);
+        window.addEventListener('blur', onBlur);
+        detachRef.current = () => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', end);
+            window.removeEventListener('pointercancel', end);
+            window.removeEventListener('blur', onBlur);
+        };
+    };
+
+    // 卸载时摘掉监听：滑出去之后按钮常常就被卸载了。
+    useEffect(() => () => {
+        detachRef.current?.();
+        detachRef.current = null;
+    }, []);
 
     /** 轨道远端图标的位置：贴着轨道远端那一头居中。 */
     const iconPositionClass = (() => {
@@ -280,7 +363,9 @@ export const SlideActionButton: React.FC<SlideActionButtonProps> = ({
 
     return (
         <div
-            className={`relative transition-all duration-300 transform ${motionClass}`}
+            // 拖动中不给过渡：整颗按钮会在按下时从「探头」位置滑到盒子里，
+            // 300ms 的过渡会让它拖着尾巴追手指（也是「手感断断续续」的一部分）。
+            className={`relative transform ${isDragging ? 'transition-none' : 'transition-all duration-300'} ${motionClass}`}
             style={{ width: sizePx, height: sizePx }}
         >
             <div
@@ -308,34 +393,11 @@ export const SlideActionButton: React.FC<SlideActionButtonProps> = ({
                 ref={buttonRef}
                 type="button"
                 disabled={disabled}
-                onPointerDown={(event) => {
-                    if (disabled) return;
-                    gestureRef.current = { startX: event.clientX, startY: event.clientY, triggered: false };
-                    suppressClickRef.current = false;
-                    setShowGuideLine(false);
-                    setIsDragging(true);
-                    setDragFeedback(0);
-                    event.currentTarget.setPointerCapture?.(event.pointerId);
-                }}
-                onPointerMove={(event) => {
-                    const gesture = gestureRef.current;
-                    if (!gesture || gesture.triggered) return;
-                    const deltaX = event.clientX - gesture.startX;
-                    const deltaY = event.clientY - gesture.startY;
-                    const primary = geometry.axis === 'x' ? deltaX : deltaY;
-                    const secondary = geometry.axis === 'x' ? deltaY : deltaX;
-                    setDragFeedback(primary);
-                    // 主轴走够距离、且明确压过副轴，才算滑到位（斜着划不会误触）。
-                    if (primary * geometry.sign >= TRIGGER_DISTANCE && Math.abs(primary) > Math.abs(secondary) * 1.2) {
-                        gesture.triggered = true;
-                        suppressClickRef.current = true;
-                        event.preventDefault();
-                        resetDragFeedback('trigger', primary);
-                        onSlide();
-                    }
-                }}
-                onPointerUp={clearGesture}
-                onPointerCancel={clearGesture}
+                onPointerDown={beginGesture}
+                // 长按拖动时浏览器的右键菜单 / 长按选择会把指针收走（Android WebView 上就是
+                // 「拖到一半断掉」），这两处一起压住：菜单不弹、文字不选。
+                onContextMenu={(event) => event.preventDefault()}
+                onDragStart={(event) => event.preventDefault()}
                 onMouseEnter={() => { if (supportsHover) setShowGuideLine(true); }}
                 onMouseLeave={() => { if (supportsHover) setShowGuideLine(false); }}
                 onClick={(event) => {
@@ -347,7 +409,15 @@ export const SlideActionButton: React.FC<SlideActionButtonProps> = ({
                     }
                     onActivate();
                 }}
-                style={{ touchAction: 'none', width: sizePx, height: sizePx, ...geometry.button }}
+                style={{
+                    touchAction: 'none',
+                    userSelect: 'none',
+                    WebkitUserSelect: 'none',
+                    WebkitTouchCallout: 'none',
+                    width: sizePx,
+                    height: sizePx,
+                    ...geometry.button,
+                }}
                 className={`rounded-full flex items-center justify-center transition-all duration-300 shadow-lg backdrop-blur-md transform border-none absolute z-10 disabled:opacity-40 disabled:cursor-default ${isDaylight ? 'bg-white/70 text-zinc-900' : 'bg-black/40 text-white'}`}
                 title={title}
                 aria-label={title}

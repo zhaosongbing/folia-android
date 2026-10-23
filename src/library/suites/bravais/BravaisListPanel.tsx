@@ -96,7 +96,7 @@ const BravaisListPanel: React.FC<{ layer: BravaisLayer; depth: number; actions: 
 
     return (
         <div className="bravais-seam-panel" data-bravais-list={layer.key}>
-            <div className="bravais-seam-crumbs">
+            <div className="bravais-seam-crumbs" data-seam-part="head">
                 <button type="button" className="bravais-seam-back" data-bravais-seam-action="close-list" onClick={actions.close}
                     aria-label={t('libraryBravais.seamBack')} title={t('libraryBravais.seamBack')}>
                     <ChevronLeft aria-hidden />
@@ -139,7 +139,7 @@ const BravaisListPanel: React.FC<{ layer: BravaisLayer; depth: number; actions: 
                     />
                 ) : collection?.status && <BravaisSeamStatusLine status={collection.status} />}
             </div>
-            <div className="bravais-seam-actions">
+            <div className="bravais-seam-actions" data-seam-part="dock">
                 {seam.onPlayScope && (
                     <button type="button" className="bravais-chrome-button is-primary" data-bravais-seam-action="play-scope" onClick={seam.onPlayScope}>
                         <Play aria-hidden />{seam.scopeLabels?.play ?? t('libraryBravais.playAll')}

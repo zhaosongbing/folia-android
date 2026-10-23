@@ -34,7 +34,7 @@ const BravaisSeamSearch: React.FC<{ layer: BravaisLayer }> = ({ layer }) => {
     };
     return (
         <div className="bravais-seam-search" data-bravais-search data-bravais-input-kind="search">
-            <div className="bravais-seam-crumbs">
+            <div className="bravais-seam-crumbs" data-seam-part="head">
                 <BravaisSeamCrumbs layer={layer} panelLabel={search.title} onClosePanel={close} />
                 <button type="button" className="bravais-seam-level" data-bravais-seam-action="close-search" onClick={close}>
                     {search.closeLabel}

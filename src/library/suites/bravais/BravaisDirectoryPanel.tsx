@@ -108,7 +108,7 @@ const BravaisDirectoryPanel: React.FC<{ layer: BravaisLayer; actions: BravaisPan
     const selectAll = panel.selectAll;
     return (
         <div className="bravais-seam-panel is-directory" data-bravais-directory={layer.key}>
-            <div className="bravais-seam-crumbs">
+            <div className="bravais-seam-crumbs" data-seam-part="head">
                 <button type="button" className="bravais-seam-back" data-bravais-seam-action="close-directory" onClick={actions.close}
                     aria-label={t('libraryBravais.seamBack')} title={t('libraryBravais.seamBack')}>
                     <ChevronLeft aria-hidden />
@@ -151,7 +151,7 @@ const BravaisDirectoryPanel: React.FC<{ layer: BravaisLayer; actions: BravaisPan
                         <BravaisSeamFormView form={panel.form} />
                     </div>
                 ) : (
-                    <div className="bravais-seam-actions is-directory">
+                    <div className="bravais-seam-actions is-directory" data-seam-part="dock">
                         {panel.actions.map(action => {
                             const Icon = ACTION_ICONS[action.id];
                             return (

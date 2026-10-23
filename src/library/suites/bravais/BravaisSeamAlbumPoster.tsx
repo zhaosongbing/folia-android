@@ -143,7 +143,7 @@ const BravaisSeamAlbumPoster: React.FC<{ layer: BravaisLayer; actions: BravaisSe
 
             <div className="bravais-poster-ui">
                 <div className="bravais-poster-top">
-                    <div className="bravais-seam-crumbs">
+                    <div className="bravais-seam-crumbs" data-seam-part="head">
                         {layer.onDone && (
                             <button type="button" className="bravais-seam-back" data-bravais-seam-action="back" onClick={layer.onDone}
                                 aria-label={t('libraryBravais.seamBack')} title={t('libraryBravais.seamBack')}>
@@ -182,7 +182,7 @@ const BravaisSeamAlbumPoster: React.FC<{ layer: BravaisLayer; actions: BravaisSe
                     <div className="bravais-album-underline" aria-hidden />
                 </div>
 
-                <div className="bravais-poster-bottom bravais-album-bottom">
+                <div className="bravais-poster-bottom bravais-album-bottom" data-seam-part="dock">
                     <div className="bravais-album-facts" data-bravais-album-facts>
                         {album && album.artists.length > 0 && <span className="bravais-album-artist">{album.artists.join(' / ')}</span>}
                         {seam.meta && <BravaisSeamFlipText as="span" flipKey={seam.meta} className="bravais-poster-meta">{seam.meta}</BravaisSeamFlipText>}

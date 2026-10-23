@@ -80,7 +80,7 @@ import './bravaisHome.css';
  * fb4：容器是首页窄缝的直接子级，排在工具格正上方。
  */
 export const BravaisSeamAccountSlot: React.FC<{ account: BravaisHomeAccount; compact: boolean }> = ({ account, compact }) => (
-    <div className="bravais-seam-account" data-bravais-account-slot={account.providerId} aria-label={account.providerLabel}>
+    <div className="bravais-seam-account" data-seam-part="dock" data-bravais-account-slot={account.providerId} aria-label={account.providerLabel}>
         <BravaisSeamAccountSwitcher account={account} compact={compact} />
     </div>
 );
@@ -227,7 +227,7 @@ const HomeSeamHead: React.FC<{
     // measure 那次只量尺寸，不参与位移：CSS 规则照样生效，但量的是变换后的位置，
     // 对布局没有影响（head 是流内元素，位移不改变它占的空间）。
     return (
-        <div className="bravais-seam-home-head">
+        <div className="bravais-seam-home-head" data-seam-part="head">
             <div className={`bravais-seam-home-title${hideTitle ? ' is-hidden' : ''}`} data-bravais-home-title={measure ? undefined : hideTitle ? 'hidden' : 'shown'}>
                 {title}
             </div>
@@ -395,7 +395,7 @@ const BravaisSeamHome: React.FC<{
             {compact && (
                 // 这颗「展开」按钮是工具坞的尾巴（在「我喜欢的音乐」与账户入口下面），
                 // 不在 .bravais-seam-dock 里，所以要自己带上同一个位移类，跟着下部分一起动。
-                <button type="button" className="bravais-seam-icon bravais-seam-dock-tail" data-bravais-seam-action="expand" onClick={expand}
+                <button type="button" className="bravais-seam-icon bravais-seam-dock-tail" data-seam-part="dock" data-bravais-seam-action="expand" onClick={expand}
                     aria-label={t('libraryBravais.seamExpand')} title={t('libraryBravais.seamExpand')}>
                     <Maximize2 aria-hidden />
                 </button>

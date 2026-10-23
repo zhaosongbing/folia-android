@@ -188,26 +188,21 @@
 /* 信息条上 / 下部分的整体位移。
    变量由 BravaisSeam 写在 .bravais-seam-content 上（那里同时被 React 与逐帧脚本写 style，
    但两者写的属性不重叠：React 管 width/marginLeft/变量，脚本管 opacity，互不覆盖）。
-   用一处变量 + 一组选择器，而不是每个变体各自算 inline style：集合页之前就是漏了，
-   inline 只加在 FullSeam 上，用户切到别的层位就「没反应」。
-   收录规则：这一套选择器覆盖所有真的会渲染出来的类名 ——
-   上部分：首页窄缝的 home-head、完整信息条 / 列表面板 / 搜索 / 海报页顶部的 crumbs；
-   下部分：首页窄缝的工具坞、完整信息条与面板的动作行、海报页的底部（bravais-poster-bottom）。
-   之前写在这里的 .bravais-seam-spine-head / -foot / .bravais-poster-head / -foot 在任何
-   TSX 里都不存在（书脊是竖排条，没有上下部分；海报的真类名是 poster-top / poster-bottom），
-   属于死规则，换成本表。 */
-.bravais-seam-content .bravais-seam-home-head,
-.bravais-seam-content .bravais-seam-crumbs {
+
+   按 data-seam-part 认，不再逐个列类名（实测反馈：信息条整个下部分要一起动）。
+   「下部分」在一套模板里往往有四五个元素 —— 首页窄缝是账户入口 + 工具坞 + 那颗「展开」
+   尾巴，完整信息条是「播放全部 / 加入队列」一行 + 「列表 / ⋯ 更多」一行 —— 逐个列类名
+   总会漏掉一个，漏掉的那个就留在原处，看起来像掉队。属性由各组件自己标，谁属于哪一部分
+   在写组件的地方就说清楚了。
+
+   上部分：首页窄缝的 home-head（标题 + 竖排页签）；完整信息条 / 列表面板 / 目录面板 /
+   搜索 / 海报页顶部的 crumbs（返回 + 面包屑）。
+   下部分：见上。书脊（bravais-seam-spine）没有上下之分，不标。 */
+.bravais-seam-content [data-seam-part='head'] {
     transform: translate(var(--seam-head-x, 0px), var(--seam-head-y, 0px));
 }
 
-.bravais-seam-content .bravais-seam-dock,
-.bravais-seam-content .bravais-seam-actions,
-.bravais-seam-content .bravais-poster-bottom,
-/* 工具坞的尾巴：窄缝（compact）里那颗「展开」，排在「我喜欢的音乐」与账户入口下面。
-   它不是 .bravais-seam-dock 的子元素，所以单独收进来跟着一起动 ——
-   否则下部分挪开了，这颗还留在原处，看起来像掉队。 */
-.bravais-seam-content .bravais-seam-dock-tail {
+.bravais-seam-content [data-seam-part='dock'] {
     transform: translate(var(--seam-dock-x, 0px), var(--seam-dock-y, 0px));
 }
 

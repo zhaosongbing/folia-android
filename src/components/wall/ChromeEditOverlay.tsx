@@ -38,13 +38,15 @@ import { resolveChromeMargins, resolveChromeSnapDelta, type ChromeSnapTarget } f
 type ChromeEditEntry = {
     id: string;
     /**
-     * 控件的选择器；匹配不到就跳过（那颗没在渲染）。可以写多个（逗号分隔），
-     * 取文档顺序里第一个 —— 缝在翻牌时新旧两套内容会同时存在一瞬，取旧的也无妨，
-     * 下一帧测量就换过来了。
+     * 控件的选择器。可以匹配多个元素 —— 那时框画成它们的**包围盒**，拖动整组一起走。
+     *
+     * 信息条的一「部分」本来就是一组（首页窄缝是账户入口 + 工具坞 + 展开尾巴，
+     * 完整信息条是两排动作），实测反馈要的是「整个下部分一起动」。这些元素改的是
+     * 同一组偏移、各自在 CSS 里读同一对变量，所以整组动不需要额外做联动。
      */
     selector: string;
     offsetTarget: WallChromeOffsetTarget;
-    /** 有大小可调的才写；信息条上下两部分只挪不缩放。 */
+    /** 有大小可调的才写；信息条上下两部分与顶部提示只挪不缩放。 */
     sizeTarget?: WallChromeSizeTarget;
     labelKey: string;
 };
@@ -54,10 +56,14 @@ const ENTRIES: readonly ChromeEditEntry[] = [
     { id: 'wallLocate', selector: '[data-grid-locate]', offsetTarget: 'wallLocate', sizeTarget: 'wallLocate', labelKey: 'options.wallChromeTargetLocate' },
     { id: 'wallTools', selector: '.lattice-tools', offsetTarget: 'wallTools', sizeTarget: 'wallTools', labelKey: 'options.wallChromeTargetTools' },
     { id: 'ponder', selector: '[data-testid="page-ponder-touch-button"]', offsetTarget: 'ponder', sizeTarget: 'ponder', labelKey: 'options.wallChromeTargetPonder' },
-    // 信息条上部分：首页窄缝的 home-head、完整信息条 / 面板 / 海报页的 crumbs 是同一组设置（seamHead）。
-    { id: 'seamHead', selector: '.bravais-seam-content .bravais-seam-home-head, .bravais-seam-content .bravais-seam-crumbs', offsetTarget: 'seamHead', labelKey: 'options.wallChromeTargetSeamHead' },
-    // 信息条下部分：首页的工具坞、完整信息条的动作行、海报页的底部是同一组设置（seamDock）。
-    { id: 'seamDock', selector: '.bravais-seam-content .bravais-seam-dock, .bravais-seam-content .bravais-seam-actions, .bravais-seam-content .bravais-poster-bottom', offsetTarget: 'seamDock', labelKey: 'options.wallChromeTargetSeamDock' },
+    // 信息条上部分：首页窄缝的 home-head（标题 + 竖排页签）、完整信息条 / 面板 / 搜索 / 海报页的 crumbs。
+    // 这些元素由组件自己标 data-seam-part，CSS 按这个标记位移（见 bravais.css）。
+    { id: 'seamHead', selector: '.bravais-seam-content [data-seam-part="head"]', offsetTarget: 'seamHead', labelKey: 'options.wallChromeTargetSeamHead' },
+    // 信息条下部分：整组一起框、一起拖。
+    { id: 'seamDock', selector: '.bravais-seam-content [data-seam-part="dock"]', offsetTarget: 'seamDock', labelKey: 'options.wallChromeTargetSeamDock' },
+    // 顶部提示：平时不一定在屏幕上（提示是短暂的），所以编辑态里 AppDialogs 会画一个占位，
+    // 占位与真提示同一个选择器组 —— 没提示的时候也能把它挪到想要的位置。
+    { id: 'statusToast', selector: '[data-status-toast-slot], .status-toast', offsetTarget: 'statusToast', labelKey: 'options.wallChromeTargetToast' },
 ];
 
 type Box = { id: string; left: number; top: number; width: number; height: number };
@@ -114,6 +120,32 @@ const MASK_LABEL_KEYS: Record<WallChromeEditMask, string> = {
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
+/**
+ * 一个条目此刻的框：它匹配到的所有元素的包围盒。
+ *
+ * 一个条目匹配多个元素是常态（信息条的一「部分」本身就是一组）。翻牌的那一瞬新旧两套内容
+ * 同时在文档里 —— 旧的那套标了 data-bravais-seam-leaving，跳过它，否则框会忽然撑到
+ * 「两套内容合起来」那么大，看着像抖动。
+ */
+const measureEntry = (entry: ChromeEditEntry): Box | null => {
+    let left = Infinity;
+    let top = Infinity;
+    let right = -Infinity;
+    let bottom = -Infinity;
+    const elements = document.querySelectorAll(entry.selector);
+    for (const element of elements) {
+        if (element.closest('[data-bravais-seam-leaving]')) continue;
+        const rect = element.getBoundingClientRect();
+        if (rect.width <= 0 && rect.height <= 0) continue;
+        left = Math.min(left, rect.left);
+        top = Math.min(top, rect.top);
+        right = Math.max(right, rect.right);
+        bottom = Math.max(bottom, rect.bottom);
+    }
+    if (!Number.isFinite(left) || !Number.isFinite(top) || right - left < 1 || bottom - top < 1) return null;
+    return { id: entry.id, left, top, width: right - left, height: bottom - top };
+};
+
 const ChromeEditOverlay: React.FC = () => {
     const { t } = useTranslation();
     const editMode = useWallChromeOffsetStore(state => state.chromeEditMode);
@@ -152,17 +184,8 @@ const ChromeEditOverlay: React.FC = () => {
         const measure = () => {
             const next: Box[] = [];
             for (const entry of ENTRIES) {
-                const element = document.querySelector(entry.selector);
-                if (!element) continue;
-                const rect = element.getBoundingClientRect();
-                if (rect.width === 0 && rect.height === 0) continue;
-                next.push({
-                    id: entry.id,
-                    left: rect.left,
-                    top: rect.top,
-                    width: rect.width,
-                    height: rect.height,
-                });
+                const box = measureEntry(entry);
+                if (box) next.push(box);
             }
             setBoxes(previous => {
                 // 位置没变就不换引用，避免每帧重渲染

@@ -152,7 +152,7 @@ const BravaisSeamHomeTools: React.FC<{
 
     // 信息条下部分的位移同样走 bravais.css 的 CSS 变量，不在这里算 inline。
     return (
-        <div ref={dockRef} className="bravais-seam-dock" onKeyDown={onKeyDown}>
+        <div ref={dockRef} className="bravais-seam-dock" data-seam-part="dock" onKeyDown={onKeyDown}>
             <AnimatePresence>
                 {open && (
                     <motion.div key="menu" className="bravais-seam-menu is-home" role="menu" aria-label={home.menuLabel} data-bravais-seam-menu {...pop}>
