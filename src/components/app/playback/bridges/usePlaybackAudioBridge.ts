@@ -132,7 +132,18 @@ export function usePlaybackAudioBridge({
         if (!audioRef.current || audioContextRef.current) return;
         try {
             const AudioContextClass = window.AudioContext || (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-            const ctx = new AudioContextClass();
+            /**
+             * 'playback' 而不是默认的 'interactive'：默认档为了压低延迟只用很短的输出缓冲，
+             * 手机上主线程一抖（可视化一帧算得久、React 一次大重渲染、GC 一次回收）缓冲就见底，
+             * 听到的就是断断续续的卡顿。播放器不需要手势→出声的低延迟，需要的是不断音：
+             * 'playback' 让实现给出更大的缓冲，用一点延迟换稳定。旧 WebView 不认这个参数时退回默认构造。
+             */
+            let ctx: AudioContext;
+            try {
+                ctx = new AudioContextClass({ latencyHint: 'playback' });
+            } catch {
+                ctx = new AudioContextClass();
+            }
             audioContextRef.current = ctx;
 
             const analyser = ctx.createAnalyser();

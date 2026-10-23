@@ -21,6 +21,13 @@ import { readIncomingLyricClock } from './incomingLyricClock';
 
 // src/components/app/playback/bridges/usePlaybackVisualizerBridge.ts
 
+/**
+ * 空闲时的空频谱。模块级常量而不是每帧 new 一个空数组：
+ * 这个循环一秒跑 60 次，每帧分配一块内存会把 GC 唤起来，回收那一下卡住主线程，
+ * 恰好就是「播放时偶尔一顿」的来源之一。
+ */
+const EMPTY_SPECTRUM = new Uint8Array(0);
+
 type UsePlaybackVisualizerBridgeParams = {
 
     audioRef: MutableRefObject<HTMLAudioElement | null>;
@@ -93,6 +100,10 @@ export function usePlaybackVisualizerBridge({
     const incomingLyrics = usePlaybackStore(state => state.lyrics);
 
     const currentLineIndexRef = useRef(-1);
+    // 频谱读取的复用缓冲（见 EMPTY_SPECTRUM 的注释）：长度随 fftSize 定，运行期只分配一次。
+    // 显式写成 Uint8Array<ArrayBuffer>：AnalyserNode.getByteFrequencyData 与 MotionValue.set
+    // 要的是这个具体类型，泛型默认的 ArrayBufferLike 过不了类型检查。
+    const spectrumBufferRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
     // 智能动感模式: loads the track's beats while it is on; the clock is stepped below. A ref, so
     // switching it does not rebuild the frame loop.
     const beatFxWantedRef = useRef(false);
@@ -152,7 +163,12 @@ export function usePlaybackVisualizerBridge({
 
         if (hasAudibleSignal && analyserRef.current) {
             const bufferLength = analyserRef.current.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
+            // 复用同一块缓冲：频率 bin 数取决于 fftSize，运行期不会变，
+            // 每帧 new Uint8Array(1024) 只会制造垃圾（见文件头的 EMPTY_SPECTRUM 注释）。
+            if (!spectrumBufferRef.current || spectrumBufferRef.current.length !== bufferLength) {
+                spectrumBufferRef.current = new Uint8Array(bufferLength);
+            }
+            const dataArray = spectrumBufferRef.current;
             analyserRef.current.getByteFrequencyData(dataArray);
             audioBands.spectrum?.set(dataArray);
 
@@ -193,7 +209,7 @@ export function usePlaybackVisualizerBridge({
             audioBands.mid.set(breath);
             audioBands.vocal.set(breath);
             audioBands.treble.set(breath);
-            audioBands.spectrum?.set(new Uint8Array(0));
+            audioBands.spectrum?.set(EMPTY_SPECTRUM);
         }
 
         if (isActuallyPlaying && audioElement) {

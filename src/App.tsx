@@ -2719,6 +2719,10 @@ export default function App() {
         <audio
             key={deck}
             data-folia-main-audio="1"
+            // 哪一路是「当前」：原生侧每秒的焦点续播护栏靠它挑元素。两个 deck 都带
+            // data-folia-main-audio，护栏原来用 querySelector 取第一个，第一次交叉淡化之后
+            // 拿到的就是已经安静下来的那一路 —— 它会去 play() 那条本该停着的 deck。
+            data-folia-active-deck={automix.activeDeck === deck ? '1' : undefined}
             ref={register}
             src={automix.deckSrc(deck)}
             preload="auto"

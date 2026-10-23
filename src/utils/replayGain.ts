@@ -38,9 +38,18 @@ export const calculateReplayGain = (
         : toFiniteNumber(replayGain.trackPeak);
 
     let effectiveGainDb = gainDb;
-    if (gainDb > 0 && peak !== undefined && peak > 0) {
-        const clipSafeGainDb = -20 * Math.log10(peak);
-        effectiveGainDb = Math.min(gainDb, clipSafeGainDb);
+    if (gainDb > 0) {
+        if (peak !== undefined && peak > 0) {
+            // 有峰值：把增益限制到「放大后峰值刚好不超满刻度」。
+            const clipSafeGainDb = -20 * Math.log10(peak);
+            effectiveGainDb = Math.min(gainDb, clipSafeGainDb);
+        } else {
+            // 没有峰值：不做正向放大。峰值是判断「放大了会不会削波」的唯一依据，
+            // 缺了它就无法知道这条轨离满刻度还有多远 —— 网易云只给 gain、不给 peak，
+            // 之前这种轨的 +N dB 是直接照搬的，叠上均衡器与效果链就是用户听到的破音。
+            // 衰减（负增益）永远安全，照常生效；只牺牲「小音量轨被响度归一化抬上来」这一点。
+            effectiveGainDb = 0;
+        }
     }
 
     return {

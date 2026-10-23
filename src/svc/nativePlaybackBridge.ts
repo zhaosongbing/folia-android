@@ -109,7 +109,12 @@ export const installNativePlaybackBridge = async (
     if (selectDisplayPlayerState(state) === PlayerState.PLAYING) {
       pushState(plugin, { force: true });
       try {
-        const mainAudio = document.querySelector<HTMLAudioElement>('audio[data-folia-main-audio]');
+        // 只续播「当前」那一路。两个 deck 都带 data-folia-main-audio，之前取的是 DOM 里第一个：
+        // 第一次交叉淡化之后活动 deck 变成 B，第一个是已经停下的 A —— 护栏会每秒把 A 也 play() 起来，
+        // 白白解码一首旧歌、位置一路漂走，下一次arm还得靠 load() 重置。多出来的解码在手机上就是
+        // 和播放抢 CPU 的那点负载。
+        const mainAudio = document.querySelector<HTMLAudioElement>('audio[data-folia-active-deck="1"]')
+          ?? document.querySelector<HTMLAudioElement>('audio[data-folia-main-audio]');
         if (mainAudio && mainAudio.paused && !mainAudio.ended && mainAudio.readyState >= 2) {
           void mainAudio.play().catch(() => { /* 自动恢复失败则下秒再试 */ });
         }

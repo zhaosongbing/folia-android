@@ -1,5 +1,6 @@
 import { connectAudioEqualizerGraph } from './audioEqualizerGraph';
 import { createAudioEffectChain, type AudioEffectChain } from './audioEffects/effectChain';
+import { createPlaybackLimiter } from './playbackLimiter';
 import type { AudioEqualizerSettings } from '../utils/audioEqualizer';
 
 // src/services/playbackGraph.ts
@@ -91,16 +92,30 @@ export const buildPlaybackGraph = ({
     const fadeNode = context.createGain();
     gainNode.connect(fadeNode);
 
-    // The analyser stays last, so the visualiser draws what is actually being heard - including
-    // the volume the listener set.
-    fadeNode.connect(analyser);
+    /**
+     * The last thing before the speaker: a soft limiter, so nothing upstream can hard-clip.
+     *
+     * Every stage upstream is allowed to push the signal past full scale - ReplayGain with no peak
+     * to check against, an equaliser boosting several bands at once, the effects' makeup gain, two
+     * decks summing during a blend - and `destination` answers that by clipping, which is the
+     * "破音" people report. Below 0.95 of full scale this node is exactly the identity (WaveShaper
+     * interpolates linearly between curve points, so the straight part stays straight); above it,
+     * a tanh knee rounds the peaks off instead of squaring them.
+     *
+     * It sits after the volume and fade rather than at the mix point so that it also covers what
+     * those two and the effects do, and before the analyser so the visualiser still draws the
+     * signal that is actually heard.
+     */
+    const limiter = createPlaybackLimiter(context);
+    fadeNode.connect(limiter.input);
+    limiter.output.connect(analyser);
     analyser.connect(context.destination);
 
     // Once per audio context. Printed rather than assumed because the ORDER is the fix: if this
     // ever reads "volume" before "effects" again, the vinyl noise has stopped answering the
     // volume control and the bit crush has gone back to tracking it.
     console.log(
-        '[AudioContext] graph: decks -> mix -> equaliser -> effects -> volume -> fade -> analyser -> out'
+        '[AudioContext] graph: decks -> mix -> equaliser -> effects -> volume -> fade -> limiter -> analyser -> out'
         + ` (equaliser ${settings.enabled ? 'on' : 'flat'},`
         + ` noise ${settings.effects.noise}, crush ${settings.effects.crush}, punch ${settings.effects.punch})`,
     );
