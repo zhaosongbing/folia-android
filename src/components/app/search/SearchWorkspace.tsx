@@ -77,9 +77,14 @@ const SearchWorkspace: React.FC<SearchWorkspaceProps> = ({
         return resolveTrackDisplay ? raw.map(resolveTrackDisplay) : raw;
     }, [resolveTrackDisplay, searchResults]);
     const activeOnlineProviderId = useOnlineProviderAccountStore(state => state.activeProviderId);
-    const sources = useMemo<SearchSource[]>(() => [activeOnlineProviderId, 'local', 'navidrome'], [activeOnlineProviderId]);
+    // 「全部音源」排最前：它是「我不想先想清楚去哪个平台」时的默认入口。
+    const sources = useMemo<SearchSource[]>(
+        () => ['all', activeOnlineProviderId, 'local', 'navidrome'],
+        [activeOnlineProviderId],
+    );
     const hasCollection = useCollectionNavigationStore(state => Boolean(state.snapshot?.stack.length));
     const getSourceLabel = (source: SearchSource) => {
+        if (source === 'all') return t('search.sourceAll');
         if (source === 'local') return t('search.sourceLocal');
         if (source === 'navidrome') return t('search.sourceNavidrome');
         return omni.getProviderLabel(source);

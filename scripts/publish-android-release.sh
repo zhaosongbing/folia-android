@@ -141,12 +141,24 @@ io.open(readme_path, 'w', encoding='utf-8').write(updated.rstrip() + '\n')
 print('README 已合并 ' + version_line)
 PY
 
-CONTENT=$(base64 -w0 "$README_FILE")
-gh api -X PUT "repos/$REPO/contents/README.md" \
-    -f message="更新日志：${TAG}" \
-    -f content="$CONTENT" \
-    -f sha="$README_SHA" \
-    --jq '.commit.sha' > /dev/null
+# README 全文 base64 之后常常超过单条命令行的长度上限（--jq 那句会报
+# `Argument list too long`），所以把要提交的字段写成 JSON 文件，用 --input 传进去。
+README_JSON="$TMP_DIR/readme-update.json"
+python - "$README_JSON" "更新日志：${TAG}" "$README_SHA" "$README_FILE" <<'PY'
+import base64
+import io
+import json
+import sys
+
+out_path, message, sha, readme_path = sys.argv[1:5]
+content = base64.b64encode(io.open(readme_path, 'rb').read()).decode()
+io.open(out_path, 'w', encoding='utf-8').write(json.dumps({
+    'message': message,
+    'content': content,
+    'sha': sha,
+}))
+PY
+gh api -X PUT "repos/$REPO/contents/README.md" --input "$README_JSON" --jq '.commit.sha' > /dev/null
 
 rm -rf "$TMP_DIR" 2>/dev/null || true
 

@@ -149,7 +149,7 @@ import ExitConfirmDialog from './components/modal/ExitConfirmDialog';
 import { moveAppToBack } from './services/appExit';
 import { useAppUpdateStore } from './stores/useAppUpdateStore';
 import { applySystemBarsVisibility } from './services/systemBars';
-import { releaseScreenWakeLock, requestScreenWakeLock, type ScreenWakeLockSentinel } from './services/screenWakeLock';
+import { applyScreenWakeLock, resyncScreenWakeLock } from './services/screenWakeLock';
 import { selectThemeSettingsSnapshot, useThemeSettingsStore } from './stores/useThemeSettingsStore';
 import { useAutomixSettingsStore } from './stores/useAutomixSettingsStore';
 import { selectDesktopSettingsSnapshot, useDesktopSettingsStore } from './stores/useDesktopSettingsStore';
@@ -1639,43 +1639,26 @@ export default function App() {
     }, []);
 
     // ---- 播放中保持屏幕常亮 ----
-    // 三个条件各自负责一件事：开关决定要不要、播放状态决定何时要、
-    // visibilitychange 负责「退到后台就交还系统」（Wake Lock 的 sentinel 在页面
-    // 隐藏时会被系统自动释放，这里补的是「回到前台时重新要回来」）。
+    // 开关决定要不要、播放状态决定何时要、visibilitychange 负责「退到后台就交还系统、
+    // 回到前台再要回来」。两条通道的选择在 services/screenWakeLock.ts 里：
+    // 原生壳用窗口标志（老 WebView 没有 navigator.wakeLock，只有这条路真的有效），
+    // 浏览器用 Screen Wake Lock。
     const keepScreenOnWhilePlaying = usePlayerChromeSettingsStore(state => state.keepScreenOnWhilePlaying);
     useEffect(() => {
-        if (!keepScreenOnWhilePlaying) return undefined;
-        let sentinel: ScreenWakeLockSentinel | null = null;
-        let disposed = false;
-
-        const acquire = () => {
-            if (disposed || sentinel) return;
-            void requestScreenWakeLock().then(lock => {
-                // 释放与申请竞态：期间被 dispose 过就立刻还回去
-                if (disposed) {
-                    void releaseScreenWakeLock(lock);
-                    return;
-                }
-                sentinel = lock;
-            });
-        };
-        const release = () => {
-            const current = sentinel;
-            sentinel = null;
-            void releaseScreenWakeLock(current);
-        };
+        const wantOn = () => keepScreenOnWhilePlaying
+            && usePlaybackStore.getState().playerState === PlayerState.PLAYING;
         const sync = () => {
-            const playing = usePlaybackStore.getState().playerState === PlayerState.PLAYING;
-            if (playing && document.visibilityState === 'visible') acquire();
-            else release();
+            void applyScreenWakeLock(wantOn());
+        };
+        const onVisibilityChange = () => {
+            void resyncScreenWakeLock(wantOn());
         };
 
         sync();
-        document.addEventListener('visibilitychange', sync);
+        document.addEventListener('visibilitychange', onVisibilityChange);
         return () => {
-            disposed = true;
-            document.removeEventListener('visibilitychange', sync);
-            release();
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+            void applyScreenWakeLock(false);
         };
     }, [keepScreenOnWhilePlaying, displayPlayerState]);
 
@@ -1928,6 +1911,17 @@ export default function App() {
         pausePlayback();
         setStatusMsg({ type: 'info', text: t('notifications.sleepTimerPlaybackPaused') });
     }, [pausePlayback, setStatusMsg, t]);
+    /**
+     * 定时器选了「播完整首歌」时的收尾：当前这首放完就停，不再往下一首走。
+     * 返回 true 表示这一次的播放结束被定时器吃掉了。
+     */
+    const finishSleepTimerTrackHold = useCallback((): boolean => {
+        const store = useSleepTimerStore.getState();
+        if (!store.sleepTimerHoldsForTrackEnd) return false;
+        store.handleSetSleepTimerHoldsForTrackEnd(false);
+        handleSleepTimerExpireFallback();
+        return true;
+    }, [handleSleepTimerExpireFallback]);
     useSleepTimer({
         enabled: sleepTimerEnabled,
         hours: sleepTimerHours,
@@ -2894,6 +2888,8 @@ export default function App() {
                 // If single loop is active, native loop handles it.
                 // If not, we handle queue logic.
                 if (effectiveLoopMode !== 'one') {
+                    // 定时关闭选了「播完整首歌」：这一首放完就停，不换下一首。
+                    if (finishSleepTimerTrackHold()) return;
                     void handleNextTrack({ allowStopOnMissing: true, shouldNavigateToPlayer: false });
                 }
             }}

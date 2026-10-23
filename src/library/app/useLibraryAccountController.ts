@@ -36,6 +36,7 @@ export const useLibraryAccountController = (tables: LibraryAccountHostTables): L
         confirmLogout: request => tablesRef.current.confirmLogout(request),
         switchCleanup: {
             holdsSongs: () => tablesRef.current.switchCleanup.holdsSongs(),
+            keepsQueueOnSwitch: () => tablesRef.current.switchCleanup.keepsQueueOnSwitch?.() ?? false,
             resetForProviderSwitch: (next, previous) => tablesRef.current.switchCleanup.resetForProviderSwitch(next, previous),
         },
     }));

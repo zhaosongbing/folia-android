@@ -154,6 +154,42 @@ const extractCloudLyricText = (response: any): string => (
     response?.lrc || response?.data?.lrc || response?.lyric || response?.data?.lyric || ''
 );
 
+// 歌词接口被风控/限流时的回答：2001 是网易云自己的「操作频繁」，-460 是判定请求异常，
+// -447 是登录被风控，429 是 HTTP 层的限流。这几种再要一次往往就有了，不该直接给空歌词。
+const NETEASE_LYRIC_BLOCKED_CODES = new Set([2001, -460, -447, 429]);
+// 每次重试之前等多久：先等一下（限流窗口通常只有一两秒），再等久一点。
+const NETEASE_LYRIC_RETRY_DELAYS_MS = [700, 2000];
+
+const isLyricBlockedAnswer = (response: unknown): boolean => {
+    if (!response || typeof response !== 'object') return false;
+    const record = response as Record<string, unknown>;
+    if (NETEASE_LYRIC_BLOCKED_CODES.has(Number(record.code))) return true;
+    return Number(record.status ?? record.httpStatus) === 429;
+};
+
+const waitFor = (ms: number): Promise<void> => new Promise(resolve => { setTimeout(resolve, ms); });
+
+/**
+ * 一首歌的歌词，带被风控时的退避重试与降级：`/lyric/new` 被拦就等一会儿再要，连着被拦就换老接口
+ * `/lyric`（它要的字段少，常常还能给）。都拿不到才返回 null —— 调用处照旧按「没有歌词」处理。
+ */
+const fetchNeteaseLyric = async (songId: number): Promise<unknown> => {
+    for (const delay of [0, ...NETEASE_LYRIC_RETRY_DELAYS_MS]) {
+        if (delay > 0) await waitFor(delay);
+        const response = await neteaseApi.getLyric(songId);
+        if (!isLyricBlockedAnswer(response)) return response;
+        console.warn(`[NeteaseProvider] Lyric request blocked for song ${songId} (code ${String((response as Record<string, unknown>)?.code)}), retrying`);
+    }
+    try {
+        const legacy = await neteaseApi.getLegacyLyric(songId);
+        if (!isLyricBlockedAnswer(legacy)) return legacy;
+        console.warn(`[NeteaseProvider] Legacy lyric request blocked for song ${songId}`);
+    } catch (error) {
+        console.warn(`[NeteaseProvider] Legacy lyric request failed for song ${songId}:`, error);
+    }
+    return null;
+};
+
 const neteaseChorusRangesCache = new Map<string, Promise<Array<{ startTime: number; endTime: number }>>>();
 
 const getNeteaseChorusRanges = async (songId: MediaId): Promise<Array<{ startTime: number; endTime: number }>> => {
@@ -240,21 +276,31 @@ const getLyrics = async (
     context?: { userId?: MediaId | null },
 ): Promise<ProviderLyricsResult> => {
     if (song.sourceRef?.kind === 'online' && song.sourceRef.variant === 'cloud' && context?.userId != null) {
-        const response = await neteaseApi.getCloudLyric(toNeteaseId(context.userId), toNeteaseId(song.id));
-        const mainText = extractCloudLyricText(response);
-        const processed = await processNeteaseLyrics({ type: 'netease', lrc: { lyric: mainText } });
-        return {
-            lyrics: processed.lyrics,
-            mainText,
-            wordByWordText: null,
-            translationText: null,
-            romanizationText: null,
-            isPureMusic: processed.isPureMusic,
-            chorusRanges: await getNeteaseChorusRanges(song.id),
-        };
+        // 云盘歌词拿不到（接口出错，或者被风控拦了）就往下走一遍普通歌的歌词：
+        // 云盘里的歌多半也有正式条目，直接给空才是真的没有歌词。
+        try {
+            const response = await neteaseApi.getCloudLyric(toNeteaseId(context.userId), toNeteaseId(song.id));
+            const mainText = extractCloudLyricText(response);
+            if (mainText && !isLyricBlockedAnswer(response)) {
+                const processed = await processNeteaseLyrics({ type: 'netease', lrc: { lyric: mainText } });
+                return {
+                    lyrics: processed.lyrics,
+                    mainText,
+                    wordByWordText: null,
+                    translationText: null,
+                    romanizationText: null,
+                    isPureMusic: processed.isPureMusic,
+                    chorusRanges: await getNeteaseChorusRanges(song.id),
+                };
+            }
+            console.warn(`[NeteaseProvider] Cloud lyric empty for song ${song.id} (code ${String((response as Record<string, unknown>)?.code ?? 'none')}), asking the song's own lyrics`);
+        } catch (error) {
+            console.warn(`[NeteaseProvider] Cloud lyric request failed for song ${song.id}:`, error);
+        }
     }
 
-    const response = await neteaseApi.getLyric(toNeteaseId(song.id));
+    // 被风控/限流时在这里退避重试，再不行换老接口：只有都拿不到才是「没有歌词」。
+    const response = await fetchNeteaseLyric(toNeteaseId(song.id));
     const processed = await processNeteaseLyrics(
         typeof neteaseApi.getProcessedLyricPayload === 'function'
             ? neteaseApi.getProcessedLyricPayload(response)

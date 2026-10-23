@@ -1,6 +1,10 @@
 import { useEffect, useRef } from 'react';
+import { PlayerState } from '../types';
 import { runSleepTimerExpiryAction } from './sleepTimerExpiry';
 import { useSleepTimerStore } from '../stores/useSleepTimerStore';
+import { usePlaybackStore } from '../stores/usePlaybackStore';
+import { setStatusMessage } from '../stores/useStatusMessageStore';
+import i18n from '../i18n/config';
 
 // src/hooks/useSleepTimer.ts
 
@@ -33,7 +37,25 @@ export const useSleepTimer = ({ enabled, hours, minutes, onExpireFallback }: Use
         const timer = window.setInterval(() => {
             if (Date.now() >= deadline) {
                 window.clearInterval(timer);
-                useSleepTimerStore.setState({ sleepTimerEnabled: false, sleepTimerDeadlineMs: null });
+
+                // 「播完整首歌」：还有歌在放就交给播放结束那一刻，不在这里打断。
+                const playing = usePlaybackStore.getState().playerState === PlayerState.PLAYING;
+                const holdsForTrackEnd = useSleepTimerStore.getState().sleepTimerCloseMode === 'after-track' && playing;
+                if (holdsForTrackEnd) {
+                    useSleepTimerStore.setState({
+                        sleepTimerEnabled: false,
+                        sleepTimerDeadlineMs: null,
+                        sleepTimerHoldsForTrackEnd: true,
+                    });
+                    setStatusMessage({ type: 'info', text: i18n.t('notifications.sleepTimerAfterTrackArmed') });
+                    return;
+                }
+
+                useSleepTimerStore.setState({
+                    sleepTimerEnabled: false,
+                    sleepTimerDeadlineMs: null,
+                    sleepTimerHoldsForTrackEnd: false,
+                });
 
                 void runSleepTimerExpiryAction({
                     quitApp: window.electron?.quitApp,

@@ -3,6 +3,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { MotionValue } from 'framer-motion';
 import { applyOnlineAudioSourceMetadata, loadOnlineSongLyrics } from '../../../../services/onlinePlayback';
 import { isSongUnavailable } from '../../../../services/onlineMusic/songAvailability';
+import { findCrossSourceMatch } from '../../../../services/onlineMusic/crossSourceMatch';
 import { getSongResourceCacheKey } from '../../../../services/onlineMusic/resourceKeys';
 import { omni } from '../../../../services/onlineMusic/omni';
 import { getCachedSongCoverUrl, hasCachedSongAudio } from '../../../../services/onlineMusic/resourceCache';
@@ -52,7 +53,7 @@ import { setAudioSrc, setCachedCoverUrl, setCurrentLineIndex, setCurrentSong, se
 import { askedSongKeyRef, askForSong, playsDroppedSoFar, showSong, startOfAskedSong, startPlay, withdrawAsk } from '../currentSong';
 import { loadOnlineSongAudio } from '../source/songAudioSource';
 import { onlineFailureToast } from '../source/onlineFailureToast';
-import { offersRetry, onlineFailureOf, stopsPlayback, type OnlineFailure } from '../../../../services/onlineMusic/failure/onlineFailureCase';
+import { offersRetry, onlineFailureOf, stopsPlayback, switchableToOtherSource, type OnlineFailure } from '../../../../services/onlineMusic/failure/onlineFailureCase';
 import { openLoginWindow } from '../../../login/loginWindowStore';
 import { useTranslation } from 'react-i18next';
 import { currentTime } from '../../../../stores/motionSignals';
@@ -243,6 +244,29 @@ export function usePlaybackQueueController({
     const fmModeBeforePendingPlayRef = useRef<boolean | null>(null);
     const pendingUnavailableSkipTimerRef = useRef<number | null>(null);
     const pendingUnavailableSkipIntervalRef = useRef<number | null>(null);
+    /**
+     * 上一次「换源」的两头：从哪首换出去（from）、换到了哪首（to）。如果 to 这首也放不了，
+     * 就不再换 —— 否则同一首歌会在两个平台之间来回弹。
+     */
+    const crossSourceChainRef = useRef<{ from: string; to: string } | null>(null);
+
+    // 这首在这家放不了时，去别的平台找同一首（crossSourceMatch.ts）。找到就记下这次换源的两头，
+    // 返回那边的歌与平台名；找不到、或者这首正是刚刚换过来的那首，返回 null。
+    // 每首歌只换一次：换过去还放不了，就是真的放不了。
+    const findSwitchTarget = useCallback(async (target: SongResult) => {
+        const key = getPlaybackSongKey(target);
+        const chain = crossSourceChainRef.current;
+        if (chain && chain.to === key) {
+            crossSourceChainRef.current = null;
+            return null;
+        }
+        const match = await findCrossSourceMatch(target, getOnlineProviderIdForSong(target) ?? undefined);
+        if (!match) return null;
+        const to = getPlaybackSongKey(match.song);
+        crossSourceChainRef.current = { from: key, to };
+        console.info(`[CrossSource] ${key} cannot play here, switched to ${to} (${match.providerLabel})`);
+        return match;
+    }, []);
 
     // The stage takes the same audio element and drops the plays in flight (`dropPlaysInFlight`): a dropped
     // play never puts back the FM state it wrote, and openStagePlayer has just kept that state in the main
@@ -560,6 +584,22 @@ export function usePlaybackQueueController({
             notifyPlaybackFailed({ song, reason: shown?.case ?? null, phase: 'play', willAutoSkip });
         };
 
+        // 「这首在这家放不了」时，去别的平台找同一首：找到就把它换进队列这一条、从它接着放，这次播放
+        // 继续下去，不再报失败。找不到（或这首正是刚换过来的那首）返回 false，交给原来那套说法。
+        const switchToOtherSource = async (shown: OnlineFailure): Promise<boolean> => {
+            if (!switchableToOtherSource(shown)) return false;
+            const match = await findSwitchTarget(song);
+            // 换源这一下等了一会儿：这期间有人换了歌，就什么都不做，也不说这次失败。
+            if (!isLatestPlaybackRequest()) return true;
+            if (!match) return false;
+            const switchedQueue = buildQueueWithReplacementSong(queueContext, song, match.song);
+            restoreFmModeIfNotLanded();
+            setStatusMsg({ type: 'info', text: t('status.crossSourceSwitched', { provider: match.providerLabel }) });
+            void playSong(match.song, switchedQueue, isFmCall, { ...deferredPlayOptions, unavailableSkipCount: 0 });
+            tellFailure(shown, true);
+            return true;
+        };
+
         // How a failure of this play is shown. The refusals the listener can act on (sign in, a
         // membership, a purchase, a region) stop here; with 「无法播放时自动跳过」 on, those of only this
         // song count down like the rest, and a cancel of that count stops as they would have. The others
@@ -613,6 +653,12 @@ export function usePlaybackQueueController({
             tellFailure(shown, false);
         };
 
+        // 换得到别的音源就换，换不到才照原样说这次失败。
+        const presentOnlineFailureWithSwitch = async (shown: OnlineFailure) => {
+            if (await switchToOtherSource(shown)) return;
+            presentOnlineFailure(shown);
+        };
+
         // A song taken down (the platform's record says so) looks for another version first: found, the
         // dialog offers it. A lookup that could not reach the platform is told as that; one that found
         // none counts down to the next song.
@@ -645,6 +691,11 @@ export function usePlaybackQueueController({
                 tellFailure(shown, false);
                 return;
             }
+
+            // Nothing else of this song on its own platform: ask the other platforms for the same song and
+            // go on with it there.
+            if (await switchToOtherSource(shown)) return;
+
             presentOnlineFailure(lookupFailure && isPassingFailure(lookupFailure) ? lookupFailure : shown);
         };
 
@@ -742,13 +793,13 @@ export function usePlaybackQueueController({
             if (preloadedOnlineAudioResult.kind === 'unavailable') {
                 const shown = preloadedOnlineAudioResult.failure;
                 if (shown.case === 'taken-down') await presentTakenDown(shown);
-                else presentOnlineFailure(shown);
+                else await presentOnlineFailureWithSwitch(shown);
                 return;
             }
         } catch (error) {
             if (!isLatestPlaybackRequest()) return;
             console.error('[App] Failed to fetch song URL:', error);
-            presentOnlineFailure(onlineFailureOf({ operation: 'audio', providerId }, { error }));
+            await presentOnlineFailureWithSwitch(onlineFailureOf({ operation: 'audio', providerId }, { error }));
             return;
         }
 
@@ -880,9 +931,11 @@ export function usePlaybackQueueController({
         audioQuality,
         audioRef,
         blobUrlRef,
+        buildQueueWithReplacementSong,
         clearPendingUnavailableSkip,
         currentOnlineAudioUrlFetchedAtRef,
         currentTime,
+        findSwitchTarget,
         getNextPlayableQueueSong,
         getPlayableOnlineQueue,
         interruptStagePlaybackForMainTransition,
@@ -917,6 +970,10 @@ export function usePlaybackQueueController({
         userId,
     ]);
 
+    /**
+     * 「播放全部」。队列融合：新歌单并入当前队列，不把已经排好的歌换掉。
+     * 已经在队列里的歌不重复加（同一首按播放键取同一份），起点是这张歌单的第一首。
+     */
     const playOnlineQueueFromStart = useCallback((songs: SongResult[]) => {
         const retainedSongs = getPlayableOnlineQueue(songs);
         const firstPlayableSong = retainedSongs.find(isQueueSongPlayable);
@@ -925,8 +982,20 @@ export function usePlaybackQueueController({
             return;
         }
 
-        void playSong(firstPlayableSong, retainedSongs, false);
-    }, [getPlayableOnlineQueue, playSong, setStatusMsg, t]);
+        const merged = [...playQueue];
+        let added = 0;
+        for (const song of retainedSongs) {
+            if (queueIndexOf(merged, song) !== -1) continue;
+            merged.push(song);
+            added += 1;
+        }
+
+        if (added > 0 && playQueue.length > 0) {
+            setStatusMsg({ type: 'success', text: t('status.playlistMerged', { count: added }), nonce: Date.now(), durationMs: 1600 });
+        }
+
+        void playSong(firstPlayableSong, merged, false);
+    }, [getPlayableOnlineQueue, playQueue, playSong, setStatusMsg, t]);
 
     const handleQueueAddAndPlay = useCallback((song: SongResult) => {
         const existingIndex = queueIndexOf(playQueue, song);
@@ -1143,69 +1212,102 @@ export function usePlaybackQueueController({
             && (failedStart === undefined || startOfAskedSong() === failedStart);
         if (!isFailedPlaybackCurrent()) return;
         clearPendingUnavailableSkip();
-        const skipCount = playbackAutoSkipCountRef.current;
-        const currentIndex = queueIndexOf(playQueue, currentSong);
-        const hasNextTrack = hasTrackToSkipTo(playQueue.length, currentIndex, loopMode, isFmMode);
-        const said: StatusMessage = shown ? onlineFailureToast(shown, t) : { type: 'error', text: t('status.playbackError') };
-        const tell = (willAutoSkip: boolean) => {
-            notifyPlaybackFailed({ song: currentSong, reason: shown?.case ?? null, phase: 'mid-playback', willAutoSkip });
-        };
-        // A refusal the listener can act on stops the song where it is: it was playing, so PAUSED.
-        const stopHere = (stopped: OnlineFailure) => {
-            shouldAutoPlayRef.current = false;
-            audioRef.current?.pause();
-            setPlayerState(PlayerState.PAUSED);
-            setStatusMsg(withSignInAction(stopped, said, t));
-        };
 
-        if (shown && stopsPlayback(shown, readAutoSkipUnplayable())) {
-            stopHere(shown);
-            tell(false);
-            return;
-        }
+        // Everything a mid-playback failure used to do once it was known: say it, count down to the next
+        // song, or stop here.
+        const presentFailure = () => {
+            const skipCount = playbackAutoSkipCountRef.current;
+            const currentIndex = queueIndexOf(playQueue, currentSong);
+            const hasNextTrack = hasTrackToSkipTo(playQueue.length, currentIndex, loopMode, isFmMode);
+            const said: StatusMessage = shown ? onlineFailureToast(shown, t) : { type: 'error', text: t('status.playbackError') };
+            const tell = (willAutoSkip: boolean) => {
+                notifyPlaybackFailed({ song: currentSong, reason: shown?.case ?? null, phase: 'mid-playback', willAutoSkip });
+            };
+            // A refusal the listener can act on stops the song where it is: it was playing, so PAUSED.
+            const stopHere = (stopped: OnlineFailure) => {
+                shouldAutoPlayRef.current = false;
+                audioRef.current?.pause();
+                setPlayerState(PlayerState.PAUSED);
+                setStatusMsg(withSignInAction(stopped, said, t));
+            };
 
-        if (!hasNextTrack || skipCount >= MAX_UNAVAILABLE_AUTO_SKIP_COUNT) {
-            if (shown && stopsPlayback(shown)) {
+            if (shown && stopsPlayback(shown, readAutoSkipUnplayable())) {
                 stopHere(shown);
                 tell(false);
                 return;
             }
-            setPlayerState(PlayerState.IDLE);
-            // Where asking again may help: the caller's retry (the same address once more, where it
-            // played), else the song from its start.
-            const retryPlay = shown && offersRetry(shown)
-                ? retry ?? (currentSong ? () => {
-                    const live = usePlaybackStore.getState();
-                    void latestQueueActionsRef.current.playSong(currentSong, live.playQueue, live.isFmMode, { shouldNavigateToPlayer: false });
-                } : undefined)
-                : undefined;
-            setStatusMsg(retryPlay ? {
-                ...said,
-                actionLabel: t('ui.retry'),
-                onAction: () => {
-                    setStatusMsg(null);
-                    if (isFailedPlaybackCurrent()) retryPlay();
-                },
-            } : said);
-            tell(false);
+
+            if (!hasNextTrack || skipCount >= MAX_UNAVAILABLE_AUTO_SKIP_COUNT) {
+                if (shown && stopsPlayback(shown)) {
+                    stopHere(shown);
+                    tell(false);
+                    return;
+                }
+                setPlayerState(PlayerState.IDLE);
+                // Where asking again may help: the caller's retry (the same address once more, where it
+                // played), else the song from its start.
+                const retryPlay = shown && offersRetry(shown)
+                    ? retry ?? (currentSong ? () => {
+                        const live = usePlaybackStore.getState();
+                        void latestQueueActionsRef.current.playSong(currentSong, live.playQueue, live.isFmMode, { shouldNavigateToPlayer: false });
+                    } : undefined)
+                    : undefined;
+                setStatusMsg(retryPlay ? {
+                    ...said,
+                    actionLabel: t('ui.retry'),
+                    onAction: () => {
+                        setStatusMsg(null);
+                        if (isFailedPlaybackCurrent()) retryPlay();
+                    },
+                } : said);
+                tell(false);
+                return;
+            }
+
+            const nextSkipCount = skipCount + 1;
+            showTimedSkipPrompt(said, () => {
+                playbackAutoSkipCountRef.current = nextSkipCount;
+                // The newest handleNextTrack: the queue as it is when the skip comes, edits made meanwhile kept.
+                void latestQueueActionsRef.current.handleNextTrack({
+                    allowStopOnMissing: true,
+                    shouldNavigateToPlayer: false,
+                    unavailableSkipCount: nextSkipCount,
+                    // The track that failed is the one on the active deck, which mid-blend is NOT the
+                    // one on screen. Skipping from the displayed track would step onto the broken one.
+                    fromSong: currentSong ?? undefined,
+                });
+            }, shown && stopsPlayback(shown) ? () => { if (isFailedPlaybackCurrent()) stopHere(shown); } : undefined);
+            tell(true);
+        };
+
+        // 播到一半放不了，而这是「这首歌在这家放不了」的一种（下架、没有音频、只有试听、地区限制……）：
+        // 别的平台有同一首，就把它换进队列这一条、从它接着放。换不到才照原样跳过或停下。
+        if (shown && currentSong && switchableToOtherSource(shown)) {
+            const target = currentSong;
+            setStatusMsg({ type: 'info', text: t('status.loadingSong') });
+            void findSwitchTarget(target).then(match => {
+                if (!match) {
+                    presentFailure();
+                    return;
+                }
+                // 换源这一下等了一会儿：这期间换过歌，就什么都不做。
+                if (!isFailedPlaybackCurrent()) return;
+                const live = usePlaybackStore.getState();
+                const baseQueue = live.playQueue.length > 0 ? live.playQueue : [target];
+                const switchedQueue = buildQueueWithReplacementSong(baseQueue, target, match.song);
+                setStatusMsg({ type: 'info', text: t('status.crossSourceSwitched', { provider: match.providerLabel }) });
+                // 这首在这家放不了，但它在别的平台接着放了：对「跳过」这件事来说是自己走过去的。
+                notifyPlaybackFailed({ song: target, reason: shown.case, phase: 'mid-playback', willAutoSkip: true });
+                void latestQueueActionsRef.current.playSong(match.song, switchedQueue, live.isFmMode, {
+                    shouldNavigateToPlayer: false,
+                    unavailableSkipCount: 0,
+                });
+            });
             return;
         }
 
-        const nextSkipCount = skipCount + 1;
-        showTimedSkipPrompt(said, () => {
-            playbackAutoSkipCountRef.current = nextSkipCount;
-            // The newest handleNextTrack: the queue as it is when the skip comes, edits made meanwhile kept.
-            void latestQueueActionsRef.current.handleNextTrack({
-                allowStopOnMissing: true,
-                shouldNavigateToPlayer: false,
-                unavailableSkipCount: nextSkipCount,
-                // The track that failed is the one on the active deck, which mid-blend is NOT the
-                // one on screen. Skipping from the displayed track would step onto the broken one.
-                fromSong: currentSong ?? undefined,
-            });
-        }, shown && stopsPlayback(shown) ? () => { if (isFailedPlaybackCurrent()) stopHere(shown); } : undefined);
-        tell(true);
-    }, [audioRef, clearPendingUnavailableSkip, currentSong, isFmMode, loopMode, playQueue, playbackAutoSkipCountRef, setPlayerState, shouldAutoPlayRef, showTimedSkipPrompt, t]);
+        presentFailure();
+    }, [audioRef, buildQueueWithReplacementSong, clearPendingUnavailableSkip, currentSong, findSwitchTarget, isFmMode, loopMode, playQueue, playbackAutoSkipCountRef, setPlayerState, shouldAutoPlayRef, showTimedSkipPrompt, t]);
 
     const buildStageQueueOperationSnapshot = useCallback((
         nextCurrentSong: SongResult | null,

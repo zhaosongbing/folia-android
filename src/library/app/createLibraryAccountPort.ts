@@ -32,6 +32,28 @@ export const playerHoldsSongs = (): boolean => {
 };
 
 /**
+ * 换到另一个平台：播放器和队列原地不动，只把「属于这个平台视角的东西」换掉
+ * —— 搜索运行时（结果跟着新平台重新搜）、集合导航栈（打开着的旧平台歌单没有意义了）、
+ * 以及私人 FM 模式（那是旧平台的推荐流）。
+ *
+ * 为什么不再清空队列：队列里的每一首歌播放地址在入队时就已经解析好了，换平台不影响能不能放；
+ * 把用户攒了半天的队列删掉，只因为去另一个平台看了一眼，是纯损失。队列融合之后，
+ * 一个队列里混着几个平台的歌是正常的，播放页与队列行按每首歌自己的 sourceRef 显示来源。
+ */
+export const retargetPlayerForProviderChange = (
+    host: LibraryAccountSwitchHost,
+    nextProviderId: OnlineProviderId,
+): void => {
+    const playback = usePlaybackStore.getState();
+    // FM 是旧平台的推荐流：关掉模式，但已经排进来的歌留在队列里。
+    if (playback.isFmMode) playback.setIsFmMode(false);
+    useSearchNavigationStore.getState().resetRuntime(nextProviderId);
+    useCollectionNavigationStore.getState().clear();
+    // 记一次，出问题时能从日志看出换平台之后队列被保留了。
+    console.info(`[ProviderChange] queue kept across the switch (${playback.playQueue.length} songs, search follows ${nextProviderId})`);
+};
+
+/**
  * 停掉声音，清掉歌、队列、歌词、封面、FM 模式和缓存，再重置搜索与集合导航；搜索之后跟着 `nextProviderId`。
  */
 export const emptyPlayerForProviderChange = (host: LibraryAccountSwitchHost, nextProviderId: OnlineProviderId): void => {
@@ -73,5 +95,13 @@ export const createLibraryAccountSwitchCleanupPort = (
     getHost: () => LibraryAccountSwitchHost,
 ): LibraryProviderSwitchCleanupPort => ({
     holdsSongs: playerHoldsSongs,
-    resetForProviderSwitch: (nextProviderId: OnlineProviderId) => emptyPlayerForProviderChange(getHost(), nextProviderId),
+    // 换平台保留队列（见 retargetPlayerForProviderChange）；退出登录仍然清空。
+    keepsQueueOnSwitch: () => true,
+    resetForProviderSwitch: (nextProviderId: OnlineProviderId, previousProviderId: OnlineProviderId) => {
+        if (nextProviderId !== previousProviderId) {
+            retargetPlayerForProviderChange(getHost(), nextProviderId);
+            return;
+        }
+        emptyPlayerForProviderChange(getHost(), nextProviderId);
+    },
 });

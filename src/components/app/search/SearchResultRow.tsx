@@ -8,6 +8,7 @@ import { getSizedCoverUrl } from '../../../utils/coverUrl';
 import { getSongUnavailableLabel, isSongUnavailable } from '../../../services/onlineMusic/songAvailability';
 import { canResolveSongCatalogRef } from '../../../services/onlineMusic/catalogRefs';
 import { getProviderSongMetadata } from '../../../services/onlineMusic/songMetadata';
+import { SongProviderBadge } from '../../shared/ProviderBadge';
 
 // src/components/app/search/SearchResultRow.tsx
 
@@ -82,6 +83,8 @@ const SearchResultRow: React.FC<SearchResultRowProps> = ({
 
                 <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
+                        {/* 「全部音源」时一排结果来自不同平台，标题前给出平台记号才分得清这是哪一家的。 */}
+                        <SongProviderBadge song={track} size={15} />
                         <button
                             type="button"
                             disabled={isUnavailable}

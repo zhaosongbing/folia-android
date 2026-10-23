@@ -12,6 +12,7 @@ import { useDesktopSettingsStore } from '../../../../stores/useDesktopSettingsSt
 import { runsOnWindows } from '../../../../utils/platform';
 import { Button, Chips, FoldedGroup, Reveal, Row, Segmented, Slider, Status, Toggle, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
 import AudioOutputDeviceRow from './AudioOutputDeviceRow';
+import SleepTimerSettingsRows from './SleepTimerSettingsRows';
 import { useSettingsPage } from './settingsPageContext';
 
 // src/components/modal/settings/pages/PlaybackPage.tsx
@@ -37,6 +38,10 @@ const O = {
     transcode: option(SOUND, 'transcodeFallback', 'options.transcodeFallback', { electronOnly: true }),
     queueBehavior: option(BEHAVIOR, 'queueDefaultBehavior', 'options.queueDefaultBehavior'),
     autoSkipUnplayable: option(BEHAVIOR, 'autoSkipUnplayable', 'options.autoSkipUnplayable'),
+    sleepTimer: option(BEHAVIOR, 'sleepTimer', 'options.sleepTimer'),
+    sleepTimerDuration: option(BEHAVIOR, 'sleepTimerDuration', 'options.sleepTimerDuration'),
+    sleepTimerCustom: option(BEHAVIOR, 'sleepTimerCustom', 'options.sleepTimerCustom'),
+    sleepTimerMode: option(BEHAVIOR, 'sleepTimerCloseMode', 'options.sleepTimerCloseMode'),
     preventSleep: option(BEHAVIOR, 'preventDisplaySleepDuringPlayback', 'options.preventDisplaySleepDuringPlayback', { electronOnly: true }),
     voiceInputPause: option(BEHAVIOR, 'voiceInputPause', 'options.voiceInputPause', { electronOnly: true, available: () => runsOnWindows() }),
 };
@@ -225,6 +230,14 @@ const PlaybackPage: React.FC = () => {
                 <Row option={O.autoSkipUnplayable} note={t('options.autoSkipUnplayableDesc')}>
                     <Toggle checked={audio.autoSkipUnplayable} onChange={audio.setAutoSkipUnplayable} />
                 </Row>
+                <SleepTimerSettingsRows
+                    options={{
+                        timer: O.sleepTimer,
+                        duration: O.sleepTimerDuration,
+                        custom: O.sleepTimerCustom,
+                        mode: O.sleepTimerMode,
+                    }}
+                />
                 {isElectron && (
                     <Row option={O.preventSleep} hint={t('options.preventDisplaySleepDuringPlaybackDesc')}>
                         <Toggle checked={preventSleep} onChange={setPreventSleep} />

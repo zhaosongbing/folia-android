@@ -1,7 +1,7 @@
 // src/services/systemBars.ts
-// 系统栏（状态栏 + 导航栏）显示开关的前端入口。
+// 系统栏（状态栏 + 导航栏）显示开关与屏幕常亮的前端入口。
 //
-// 原生侧：FoliaSystemBarsPlugin → MainActivity.setSystemBarsVisible()。
+// 原生侧：FoliaSystemBarsPlugin → MainActivity.setSystemBarsVisible() / setKeepScreenOn()。
 // 默认是全屏沉浸（两条系统栏都隐藏），这是移植版一直以来的行为，所以这个开关默认关闭。
 //
 // 非原生环境（浏览器预览）直接跳过：没有原生壳时没有任何系统栏可谈。
@@ -10,9 +10,11 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 
 type FoliaSystemBarsPlugin = {
     setVisible(options: { visible: boolean }): Promise<void>;
+    /** 播放中保持屏幕常亮：窗口标志 FLAG_KEEP_SCREEN_ON。 */
+    setKeepScreenOn(options: { on: boolean }): Promise<void>;
 };
 
-const FoliaSystemBars = registerPlugin<FoliaSystemBarsPlugin>('FoliaSystemBars');
+export const FoliaSystemBars = registerPlugin<FoliaSystemBarsPlugin>('FoliaSystemBars');
 
 /**
  * 按设置应用系统栏可见性。

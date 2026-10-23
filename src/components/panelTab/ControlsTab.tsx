@@ -3,6 +3,7 @@ import { Theme, ThemeMode, VisualizerMode } from '../../types';
 import type { ThemeSourceModel } from '../../hooks/themeControllerState';
 import AudioEqualizerDialog from './AudioEqualizerDialog';
 import AppearanceSection from './controls/AppearanceSection';
+import SleepSection from './controls/SleepSection';
 import SoundTiles from './controls/SoundTiles';
 import ThemeNameRow from './controls/ThemeNameRow';
 import ThemeSourceRow from './controls/ThemeSourceRow';
@@ -121,6 +122,11 @@ const ControlsTab: React.FC<ControlsTabProps> = ({
             isDaylight={isDaylight}
             onToggleDaylight={onToggleDaylight}
         />
+
+        <GroupLine />
+
+        {/* 睡眠：常亮与定时关闭。放在主题之后，是「听歌时顺手会调」的一组。 */}
+        <SleepSection />
 
         <AudioEqualizerDialog isDaylight={isDaylight} />
     </div>

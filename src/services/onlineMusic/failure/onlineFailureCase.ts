@@ -62,6 +62,26 @@ export const stopsPlayback = (shown: OnlineFailure, autoSkipUnplayable = false):
 );
 export const offersRetry = (shown: OnlineFailure): boolean => CASES[shown.case].retry;
 
+// 「这首歌在这家放不了」的几种：下架、没有音频、音频放不了、只有试听、要会员、要购买、要权限、地区限制。
+// 只有这几种值得去别的平台找同一首 —— 连不上、要登录、没配好、平台拒绝，换一家不是解决它们的办法。
+const SWITCHABLE_CASES = new Set<OnlineFailureCaseId>([
+    'taken-down',
+    'no-audio',
+    'audio-unplayable',
+    'not-public',
+    'preview-only',
+    'subscription-required',
+    'purchase-required',
+    'entitlement-required',
+    'region-restricted',
+]);
+
+/**
+ * 这次失败是不是「这首歌在这家放不了」。是的话，去别的音源找同一首有意义（crossSourceMatch.ts）；
+ * 网络、登录、配置和平台拒绝不在此列：换个平台不会让它们变好。
+ */
+export const switchableToOtherSource = (shown: OnlineFailure): boolean => SWITCHABLE_CASES.has(shown.case);
+
 /**
  * 要地址的请求连不上时，先自己再要几次，每次之前等这么久；都不行才告诉用的人。到了时限的请求只再要一次：
  * 它已经等过很久了。别的情况再要一次也一样，不自动重来。

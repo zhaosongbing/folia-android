@@ -322,7 +322,9 @@ export const createProviderAccountController = (deps: LibraryAccountControllerDe
         const selection = resolveProviderSelection(findProvider(to));
         if (selection.kind === 'unavailable') return { status: 'unavailable', providerId: to, reason: selection.reason };
         // 切过去会清空播放器：里面有歌才问，没有歌就直接切。
-        if (!askSafely(() => switchCleanup.holdsSongs(), true)) {
+        // 端口声明了「换平台保留队列」时不再问：既然不清空，就没有要确认的东西。
+        const keepsPlayer = askSafely(() => switchCleanup.keepsQueueOnSwitch?.() ?? false, false);
+        if (keepsPlayer || !askSafely(() => switchCleanup.holdsSongs(), true)) {
             log('info', 'switch', { from, to, reason, asked: false });
             if (pending) batch(() => settlePending({ status: 'declined', providerId: pending!.request.to, reason: 'superseded' }));
             await commitSwitch(from, to, reason === 'switch');

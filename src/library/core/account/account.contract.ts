@@ -376,6 +376,12 @@ export type LibraryProviderAccountPort = {
 export type LibraryProviderSwitchCleanupPort = {
     /** 播放器里有没有歌（正在放的或队列里的）：没有就不必问用的人。 */
     holdsSongs(): boolean;
+    /**
+     * 换平台时是否保留播放器（正在放的歌与队列）。为 true 时切换不必再问「会清空播放器」，
+     * 因为换平台不再动它 —— 队列可以混着几个平台的歌，播放地址早就解析好了。
+     * 退出当前平台仍然清空：那个平台的歌没有账号就放不出来了。
+     */
+    keepsQueueOnSwitch?(): boolean;
     /** 清空播放器；搜索之后跟着 nextProviderId。退出当前平台时两个 id 相同。 */
     resetForProviderSwitch(nextProviderId: OnlineProviderId, previousProviderId: OnlineProviderId): void | Promise<void>;
 };

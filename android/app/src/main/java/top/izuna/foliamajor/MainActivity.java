@@ -27,6 +27,29 @@ public class MainActivity extends BridgeActivity {
     private boolean backCallbackRegistered = false;
     /** 一次返回请求正在等 Web 层答复；期间再按返回键直接忽略，避免连着弹出两个确认框。 */
     private boolean backInFlight = false;
+    /**
+     * 播放中保持屏幕常亮。窗口标志必须在 Activity 上设置才真的有效：
+     * 车机 / 老平板的 WebView 往往没有 navigator.wakeLock（Chrome 84 才有），
+     * 只靠网页那条 API 时开关看起来打开了、屏幕照样灭。
+     */
+    private boolean keepScreenOn = false;
+
+    /**
+     * 供 FoliaSystemBarsPlugin 调用：打开或关掉窗口的 FLAG_KEEP_SCREEN_ON。
+     * 选择记在字段里，窗口重新获得焦点时按它重新应用，否则从后台回来标志就丢了。
+     */
+    public void setKeepScreenOn(boolean on) {
+        keepScreenOn = on;
+        applyKeepScreenOn();
+    }
+
+    private void applyKeepScreenOn() {
+        if (keepScreenOn) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        } else {
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
+    }
 
     /**
      * 供 FoliaSystemBarsPlugin 调用：显示或隐藏两条系统栏。
@@ -74,6 +97,7 @@ public class MainActivity extends BridgeActivity {
         if (hasFocus) {
             applyFullscreen();
             applyCutoutMode();
+            applyKeepScreenOn();
         }
     }
 

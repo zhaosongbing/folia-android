@@ -926,6 +926,11 @@ export const neteaseApi = {
     return fetchWithCreds(`/lyric/new?id=${id}`);
   },
 
+  // 老歌词接口：字段少（没有逐字），但风控拦得松一些 —— `/lyric/new` 被拦时的降级路径。
+  getLegacyLyric: async (id: number) => {
+    return fetchWithCreds(`/lyric?id=${id}`);
+  },
+
   getChorus: async (id: number) => {
     return fetchWithCreds(`/song/chorus?id=${id}`);
   },

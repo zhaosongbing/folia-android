@@ -12,6 +12,7 @@ import { getPlaybackSongKey } from '../../utils/appPlaybackGuards';
 import { queueIndexOfKey } from '../../utils/playbackNeighbors';
 import { EmptyState } from './shell/EmptyState';
 import { PanelIconButton } from './shell/PanelIconButton';
+import { SongProviderBadge } from '../shared/ProviderBadge';
 
 // src/components/panelTab/QueueTab.tsx
 // The panel's queue tab: a line with the number of songs and the queue's own buttons, then the
@@ -88,6 +89,8 @@ const QueueRow = ({
             {isActive && <span aria-hidden className="absolute inset-y-3.5 left-0 w-[3px] rounded-r-sm bg-[var(--st-accent)]" />}
             <div className={`min-w-0 flex-1 ${isUnavailable ? 'opacity-55' : ''}`}>
                 <div className="flex items-center gap-2 text-[13px] leading-[19px]">
+                    {/* 拼贴墙：每行前面是这首歌的来源平台记号，混合队列一眼看得出哪首来自哪家。 */}
+                    <SongProviderBadge song={song} size={14} />
                     <span className={`truncate ${isActive ? 'font-semibold' : ''}`}>{song.name}</span>
                     {isUnavailable && (
                         <span className="shrink-0 rounded bg-[var(--st-fill2)] px-[5px] py-px text-[11px] leading-[15px] text-[color:var(--st-t2)]">

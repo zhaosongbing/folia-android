@@ -55,4 +55,30 @@ public class FoliaSystemBarsPlugin extends Plugin {
             }
         });
     }
+
+    /**
+     * 播放中保持屏幕常亮（窗口 FLAG_KEEP_SCREEN_ON）。
+     *
+     * 单独一条通道而不是只用网页的 Screen Wake Lock：那个 API 要 Chrome 84，
+     * 车机和不少老平板的 WebView 根本没有，开关打开也照黑屏。
+     * 窗口标志由系统维护，页面隐藏时应用自己会关掉，语义和 Wake Lock 一样。
+     */
+    @PluginMethod
+    public void setKeepScreenOn(PluginCall call) {
+        Boolean on = call.getBoolean("on", Boolean.FALSE);
+        final boolean keep = Boolean.TRUE.equals(on);
+        Activity activity = getActivity();
+        if (activity == null) {
+            call.reject("activity-unavailable");
+            return;
+        }
+        activity.runOnUiThread(() -> {
+            if (activity instanceof MainActivity) {
+                ((MainActivity) activity).setKeepScreenOn(keep);
+                call.resolve();
+            } else {
+                call.reject("unsupported-activity");
+            }
+        });
+    }
 }

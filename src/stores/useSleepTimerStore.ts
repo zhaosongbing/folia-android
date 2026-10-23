@@ -12,6 +12,29 @@ export const SLEEP_TIMER_HOURS_STORAGE_KEY = 'sleep_timer_hours';
 
 export const SLEEP_TIMER_MINUTES_STORAGE_KEY = 'sleep_timer_minutes';
 
+export const SLEEP_TIMER_CLOSE_MODE_STORAGE_KEY = 'sleep_timer_close_mode';
+
+/**
+ * 到点之后怎么关：
+ * - `immediate`：立刻停下（老行为）。
+ * - `after-track`：让正在放的这首放完，再停。放完才关是听歌场景里更常见的期待，
+ *   不然一首歌被拦腰截断。
+ */
+export type SleepTimerCloseMode = 'immediate' | 'after-track';
+
+const SLEEP_TIMER_CLOSE_MODES: readonly SleepTimerCloseMode[] = ['immediate', 'after-track'];
+
+const readStoredSleepTimerCloseMode = (): SleepTimerCloseMode => {
+    if (typeof window === 'undefined') {
+        return 'immediate';
+    }
+
+    const saved = localStorage.getItem(SLEEP_TIMER_CLOSE_MODE_STORAGE_KEY);
+    return SLEEP_TIMER_CLOSE_MODES.includes(saved as SleepTimerCloseMode)
+        ? saved as SleepTimerCloseMode
+        : 'immediate';
+};
+
 const readStoredSleepTimerPart = (key: string, max: number): number => {
     if (typeof window === 'undefined') {
         return 0;
@@ -31,9 +54,18 @@ export type SleepTimerState = {
     sleepTimerMinutes: number;
     sleepTimerDeadlineMs: number | null;
     sleepTimerActivationId: number;
+    /** 到点之后怎么关：立刻停，还是让当前这首放完再停。 */
+    sleepTimerCloseMode: SleepTimerCloseMode;
+    /**
+     * 时间已经到了、但选了「播完整首歌」：先挂起，等当前这首放完再真正停。
+     * 只在这一小段时间里是真的，播放结束（或用户关掉定时）时清掉。
+     */
+    sleepTimerHoldsForTrackEnd: boolean;
     handleToggleSleepTimer: (enable: boolean) => void;
     handleSetSleepTimerHours: (hours: number) => void;
     handleSetSleepTimerMinutes: (minutes: number) => void;
+    handleSetSleepTimerCloseMode: (mode: SleepTimerCloseMode) => void;
+    handleSetSleepTimerHoldsForTrackEnd: (holds: boolean) => void;
 };
 
 export const useSleepTimerStore = create<SleepTimerState>((set, get) => ({
@@ -43,6 +75,8 @@ export const useSleepTimerStore = create<SleepTimerState>((set, get) => ({
     sleepTimerMinutes: readStoredSleepTimerMinutes(),
     sleepTimerDeadlineMs: null,
     sleepTimerActivationId: 0,
+    sleepTimerCloseMode: readStoredSleepTimerCloseMode(),
+    sleepTimerHoldsForTrackEnd: false,
     handleToggleSleepTimer: (enable) => {
         if (enable && get().sleepTimerHours === 0 && get().sleepTimerMinutes === 0) {
             setStatusMessage({
@@ -53,6 +87,8 @@ export const useSleepTimerStore = create<SleepTimerState>((set, get) => ({
         }
         set(state => ({
             sleepTimerEnabled: enable,
+            // 关掉定时也把「等这首放完」的挂起一起取消，否则下一次播放结束还会莫名停下来。
+            sleepTimerHoldsForTrackEnd: enable ? state.sleepTimerHoldsForTrackEnd : false,
             // Every explicit activation starts a fresh countdown, even when its duration is unchanged.
             sleepTimerActivationId: enable
                 ? state.sleepTimerActivationId + 1
@@ -87,6 +123,16 @@ export const useSleepTimerStore = create<SleepTimerState>((set, get) => ({
                 : state.sleepTimerEnabled,
         }));
     },
+    handleSetSleepTimerCloseMode: (mode) => {
+        if (!SLEEP_TIMER_CLOSE_MODES.includes(mode)) return;
+        if (typeof window !== 'undefined') {
+            localStorage.setItem(SLEEP_TIMER_CLOSE_MODE_STORAGE_KEY, mode);
+        }
+        set({ sleepTimerCloseMode: mode });
+    },
+    handleSetSleepTimerHoldsForTrackEnd: (holds) => {
+        set({ sleepTimerHoldsForTrackEnd: holds });
+    },
 }));
 
 /**
@@ -99,7 +145,11 @@ export const selectSleepTimerSnapshot = (state: SleepTimerState) => ({
     sleepTimerMinutes: state.sleepTimerMinutes,
     sleepTimerDeadlineMs: state.sleepTimerDeadlineMs,
     sleepTimerActivationId: state.sleepTimerActivationId,
+    sleepTimerCloseMode: state.sleepTimerCloseMode,
+    sleepTimerHoldsForTrackEnd: state.sleepTimerHoldsForTrackEnd,
     handleToggleSleepTimer: state.handleToggleSleepTimer,
     handleSetSleepTimerHours: state.handleSetSleepTimerHours,
     handleSetSleepTimerMinutes: state.handleSetSleepTimerMinutes,
+    handleSetSleepTimerCloseMode: state.handleSetSleepTimerCloseMode,
+    handleSetSleepTimerHoldsForTrackEnd: state.handleSetSleepTimerHoldsForTrackEnd,
 });
