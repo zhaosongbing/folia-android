@@ -123,9 +123,8 @@ const ControlsTab: React.FC<ControlsTabProps> = ({
             onToggleDaylight={onToggleDaylight}
         />
 
-        <GroupLine />
-
-        {/* 睡眠：常亮与定时关闭。放在主题之后，是「听歌时顺手会调」的一组。 */}
+        {/* 睡眠：常亮与定时关闭。放在主题之后，是「听歌时顺手会调」的一组。
+            SleepSection 自己开头就画了一条分隔线，这里不再多画一条。 */}
         <SleepSection />
 
         <AudioEqualizerDialog isDaylight={isDaylight} />

@@ -39,6 +39,7 @@ const O = {
     tabLocal: option(HOME, 'showHomeTabLocal', 'options.showHomeTabLocal'),
     cardStyle: option(HOME, 'grid3dCardStyle', 'options.grid3dCardStyle'),
     rememberPosition: option(HOME, 'rememberHomeCardPosition', 'options.rememberHomeCardPosition'),
+    pinchZoom: option(HOME, 'wallPinchZoom', 'options.wallPinchZoom'),
     fullBleedCover: option(GRID, 'gridViewFullBleedCover', 'options.gridViewFullBleedCover'),
     squareCard: option(GRID, 'gridViewSquareCard', 'options.gridViewSquareCard'),
     minCardScale: option(GRID, 'gridViewMinCardScale', 'options.gridViewMinCardScale'),
@@ -67,6 +68,8 @@ const HomePage: React.FC = () => {
         setTabExplore: state.handleToggleHomeTabExplore,
         setCardStyle: state.handleSetGrid3dCardStyle,
         setRememberPosition: state.handleToggleRememberHomeCardPosition,
+        pinchZoom: state.wallPinchZoom,
+        setPinchZoom: state.handleToggleWallPinchZoom,
     })));
     const grid = useGridViewSettingsStore(useShallow(state => ({
         fullBleedCover: state.gridViewFullBleedCover,
@@ -123,6 +126,9 @@ const HomePage: React.FC = () => {
                 </Row>
                 <Row option={O.rememberPosition} note={t('options.rememberHomeCardPositionDesc')}>
                     <Toggle checked={home.rememberPosition} onChange={home.setRememberPosition} />
+                </Row>
+                <Row option={O.pinchZoom} note={t('options.wallPinchZoomDesc')}>
+                    <Toggle checked={home.pinchZoom} onChange={home.setPinchZoom} />
                 </Row>
             </FoldedGroup>
 

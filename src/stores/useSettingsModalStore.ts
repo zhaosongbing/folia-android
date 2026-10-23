@@ -43,6 +43,9 @@ const SETTINGS_TAB_INDICATOR_KEY = 'settings_tab_indicator';
 /** 设置弹窗的高斯模糊：模糊半径（px）与面板不透明度（%）。 */
 const SETTINGS_BLUR_PX_KEY = 'settings_modal_blur_px';
 const SETTINGS_OPACITY_KEY = 'settings_modal_opacity';
+/** 折叠组卡片自己的模糊与不透明度：与面板分开存，互不影响。 */
+const SETTINGS_FOLD_BLUR_PX_KEY = 'settings_fold_blur_px';
+const SETTINGS_FOLD_OPACITY_KEY = 'settings_fold_opacity';
 
 /** 模糊半径的调节范围与默认值。0 = 不模糊（纯色面板）。 */
 export const SETTINGS_BLUR_MIN_PX = 0;
@@ -52,6 +55,12 @@ export const SETTINGS_BLUR_DEFAULT_PX = 18;
 export const SETTINGS_OPACITY_MIN_PERCENT = 40;
 export const SETTINGS_OPACITY_MAX_PERCENT = 100;
 export const SETTINGS_OPACITY_DEFAULT_PERCENT = 86;
+
+/** 折叠组卡片：默认值与改动前的观感一致（模糊跟面板同一档，卡片底色 72%）。 */
+export const SETTINGS_FOLD_BLUR_DEFAULT_PX = SETTINGS_BLUR_DEFAULT_PX;
+export const SETTINGS_FOLD_OPACITY_MIN_PERCENT = 30;
+export const SETTINGS_FOLD_OPACITY_MAX_PERCENT = 100;
+export const SETTINGS_FOLD_OPACITY_DEFAULT_PERCENT = 72;
 
 export type SettingsModalUiState = {
     appLanguagePreference: AppLanguagePreference;
@@ -66,10 +75,16 @@ export type SettingsModalUiState = {
     settingsBlurPx: number;
     /** 设置弹窗面板的不透明度（%），配合模糊决定背后透出多少。 */
     settingsOpacityPercent: number;
+    /** 设置弹窗里折叠组卡片自己的高斯模糊半径（px），0 为不模糊。 */
+    settingsFoldBlurPx: number;
+    /** 折叠组卡片自己的不透明度（%）。比面板低一点，卡片才不会像一块实心板压在玻璃上。 */
+    settingsFoldOpacityPercent: number;
     setLastSeenGuideVersion: (version: string) => void;
     setShowTabIndicator: (show: boolean) => void;
     setSettingsBlurPx: (px: number) => void;
     setSettingsOpacityPercent: (percent: number) => void;
+    setSettingsFoldBlurPx: (px: number) => void;
+    setSettingsFoldOpacityPercent: (percent: number) => void;
     setIsUserGuideModalOpen: (isOpen: boolean) => void;
     setIsSubSettingsViewOpen: (open: boolean) => void;
     openSettings: (
@@ -118,6 +133,26 @@ const readStoredOpacityPercent = (): number => {
     }
 };
 
+const readStoredFoldBlurPx = (): number => {
+    if (typeof localStorage === 'undefined') return SETTINGS_FOLD_BLUR_DEFAULT_PX;
+    try {
+        const raw = Number.parseInt(localStorage.getItem(SETTINGS_FOLD_BLUR_PX_KEY) ?? '', 10);
+        return clampInt(raw, SETTINGS_BLUR_MIN_PX, SETTINGS_BLUR_MAX_PX, SETTINGS_FOLD_BLUR_DEFAULT_PX);
+    } catch {
+        return SETTINGS_FOLD_BLUR_DEFAULT_PX;
+    }
+};
+
+const readStoredFoldOpacityPercent = (): number => {
+    if (typeof localStorage === 'undefined') return SETTINGS_FOLD_OPACITY_DEFAULT_PERCENT;
+    try {
+        const raw = Number.parseInt(localStorage.getItem(SETTINGS_FOLD_OPACITY_KEY) ?? '', 10);
+        return clampInt(raw, SETTINGS_FOLD_OPACITY_MIN_PERCENT, SETTINGS_FOLD_OPACITY_MAX_PERCENT, SETTINGS_FOLD_OPACITY_DEFAULT_PERCENT);
+    } catch {
+        return SETTINGS_FOLD_OPACITY_DEFAULT_PERCENT;
+    }
+};
+
 export const useSettingsModalStore = create<SettingsModalUiState>((set, get) => ({
     appLanguagePreference: readStoredAppLanguagePreference(),
     pinnedCommandIds: readPinnedCommandIds(),
@@ -134,6 +169,8 @@ export const useSettingsModalStore = create<SettingsModalUiState>((set, get) => 
     showTabIndicator: readStoredTabIndicator(),
     settingsBlurPx: readStoredBlurPx(),
     settingsOpacityPercent: readStoredOpacityPercent(),
+    settingsFoldBlurPx: readStoredFoldBlurPx(),
+    settingsFoldOpacityPercent: readStoredFoldOpacityPercent(),
     setLastSeenGuideVersion: (version) => {
         if (typeof window !== 'undefined') {
             localStorage.setItem(LAST_SEEN_GUIDE_VERSION_STORAGE_KEY, version);
@@ -179,6 +216,24 @@ export const useSettingsModalStore = create<SettingsModalUiState>((set, get) => 
         set({ settingsOpacityPercent: clamped });
         try {
             localStorage.setItem(SETTINGS_OPACITY_KEY, String(clamped));
+        } catch {
+            // 存储写不进去时至少让本次会话生效
+        }
+    },
+    setSettingsFoldBlurPx: (px) => {
+        const clamped = clampInt(px, SETTINGS_BLUR_MIN_PX, SETTINGS_BLUR_MAX_PX, SETTINGS_FOLD_BLUR_DEFAULT_PX);
+        set({ settingsFoldBlurPx: clamped });
+        try {
+            localStorage.setItem(SETTINGS_FOLD_BLUR_PX_KEY, String(clamped));
+        } catch {
+            // 存储写不进去时至少让本次会话生效
+        }
+    },
+    setSettingsFoldOpacityPercent: (percent) => {
+        const clamped = clampInt(percent, SETTINGS_FOLD_OPACITY_MIN_PERCENT, SETTINGS_FOLD_OPACITY_MAX_PERCENT, SETTINGS_FOLD_OPACITY_DEFAULT_PERCENT);
+        set({ settingsFoldOpacityPercent: clamped });
+        try {
+            localStorage.setItem(SETTINGS_FOLD_OPACITY_KEY, String(clamped));
         } catch {
             // 存储写不进去时至少让本次会话生效
         }

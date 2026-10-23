@@ -33,6 +33,12 @@ const readStoredGrid3dCardStyle = (): 'image' | 'card' => {
 export type HomeLayoutSettingsState = {
     rememberHomeCardPosition: boolean;
     handleToggleRememberHomeCardPosition: (remember: boolean) => void;
+    /**
+     * 主页与歌单页的双指缩放。关掉之后墙只平移、不缩放（老设备上缩放本身就是负担）。
+     * 缩放倍率不持久化：它是这一次看墙的临时状态，重开应用回到默认档位。
+     */
+    wallPinchZoom: boolean;
+    handleToggleWallPinchZoom: (enabled: boolean) => void;
     grid3dCardStyle: 'image' | 'card';
     handleSetGrid3dCardStyle: (style: 'image' | 'card') => void;
     homeLayoutStyle: 'carousel' | 'grid';
@@ -58,6 +64,11 @@ export const useHomeLayoutSettingsStore = create<HomeLayoutSettingsState>((set, 
         if (!remember) useHomeCardPositionStore.getState().clear();
     },
     grid3dCardStyle: readStoredGrid3dCardStyle(),
+    wallPinchZoom: getStoredBoolean('wall_pinch_zoom', true),
+    handleToggleWallPinchZoom: (enabled) => {
+        set({ wallPinchZoom: enabled });
+        setStoredBoolean('wall_pinch_zoom', enabled);
+    },
     handleSetGrid3dCardStyle: (style) => {
         set({ grid3dCardStyle: style });
         if (typeof window !== 'undefined') localStorage.setItem('grid3d_card_style', style);
@@ -111,6 +122,8 @@ export const useHomeLayoutSettingsStore = create<HomeLayoutSettingsState>((set, 
 export const selectHomeLayoutSettingsSnapshot = (state: HomeLayoutSettingsState) => ({
     rememberHomeCardPosition: state.rememberHomeCardPosition,
     handleToggleRememberHomeCardPosition: state.handleToggleRememberHomeCardPosition,
+    wallPinchZoom: state.wallPinchZoom,
+    handleToggleWallPinchZoom: state.handleToggleWallPinchZoom,
     grid3dCardStyle: state.grid3dCardStyle,
     handleSetGrid3dCardStyle: state.handleSetGrid3dCardStyle,
     homeLayoutStyle: state.homeLayoutStyle,

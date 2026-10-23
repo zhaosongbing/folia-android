@@ -544,6 +544,14 @@
     backdrop-filter: blur(18px);
 }
 
+/* 缝正在动（宽度或位置这一帧变了）时不画它自己的模糊：模糊半径 18px，而缝的尺寸每帧都在变，
+   每帧都要按新尺寸把背后的画面重新采一遍 —— 在 Android 的 WebView 上这就是「拖动时偶尔闪一下、抖一下」。
+   停下来 140ms 后 useBravaisFrame 把 data-bravais-moving 清掉，模糊恢复。 */
+.bravais-root.has-seam-blur .bravais-seam[data-bravais-moving='1'] {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
 /* 块底板（B12b）：每个已挂载的块一张内联 SVG，在世界层里、磁贴之下，随相机平移；evenodd 路径 = 外框减去窗洞，
    不用 CSS 遮罩。填的是墙面的底色：墙面那两团主题光晕定位在视口上（屏幕固定），跟着世界走的底板画不出来，
    而底板露出来的只有磁贴间约 6px 的缝隙与空画框，差别看不出来。2D translate：不为每块单独升合成层。 */

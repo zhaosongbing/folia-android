@@ -6,6 +6,7 @@ import { FLIP_MAX_TILES } from '../../../components/wall/flipPlan';
 import { useDevicePixelRatio } from '../../../hooks/useMediaQuery';
 import { useReducedMotionFor } from '../../../hooks/useReducedMotionFor';
 import { useLatticeSettingsStore } from '../../../stores/useLatticeSettingsStore';
+import { useHomeLayoutSettingsStore } from '../../../stores/useHomeLayoutSettingsStore';
 import { useLatticePerformanceModeStore } from '../../../stores/useLatticePerformanceModeStore';
 import { useLibraryWallLookStore } from '../../../stores/useLibraryWallLookStore';
 import type { LibrarySuiteStageProps } from '../../core/suite/suite.contract';
@@ -195,7 +196,9 @@ const BravaisStage: React.FC<LibrarySuiteStageProps> = ({
         resolveSeamTarget(seamInputFor(target)).variant === 'poster'
     ), [seamInputFor]);
 
-    const camera = useBravaisCamera({ frameRef, renderFrame, fieldRef, reducedMotion });
+    // 双指缩放（设置 → 主页与歌单里的开关）：主页与歌单共用这一面墙，所以这一个开关同时管两处。
+    const pinchZoom = useHomeLayoutSettingsStore(state => state.wallPinchZoom);
+    const camera = useBravaisCamera({ frameRef, renderFrame, fieldRef, reducedMotion, pinchZoom });
     // 墙此刻的显示（useBravaisDisplay 提交时就写进它）：形状从它读，换形状的同一次提交里各处就按新形状找 slot。
     const displayBridgeRef = useRef<BravaisDisplay | null>(null);
     const getShape = useCallback(() => displayBridgeRef.current?.shape ?? BRAVAIS_BLOCK_SHAPE, []);

@@ -8,7 +8,7 @@ import { useAudioSettingsStore } from '../../../../stores/useAudioSettingsStore'
 import { usePlayerChromeSettingsStore } from '../../../../stores/usePlayerChromeSettingsStore';
 import { useAppUpdateStore } from '../../../../stores/useAppUpdateStore';
 import { selectPonderSettingsSnapshot, usePonderStore } from '../../../../stores/usePonderStore';
-import { useSettingsModalStore, SETTINGS_BLUR_MAX_PX, SETTINGS_BLUR_MIN_PX, SETTINGS_OPACITY_MAX_PERCENT, SETTINGS_OPACITY_MIN_PERCENT } from '../../../../stores/useSettingsModalStore';
+import { useSettingsModalStore, SETTINGS_BLUR_MAX_PX, SETTINGS_BLUR_MIN_PX, SETTINGS_FOLD_OPACITY_MAX_PERCENT, SETTINGS_FOLD_OPACITY_MIN_PERCENT, SETTINGS_OPACITY_MAX_PERCENT, SETTINGS_OPACITY_MIN_PERCENT } from '../../../../stores/useSettingsModalStore';
 import { Button, FoldedGroup, Reveal, Row, Segmented, Select, Slider, Toggle, option, type SettingsGroupDef, type SettingsOptionDef } from '../kit';
 import { FoundUpdateRow } from './FoundUpdateRow';
 import { useSettingsPage } from './settingsPageContext';
@@ -34,6 +34,8 @@ const O = {
     tabIndicator: option(LAUNCH, 'showTabIndicator', 'options.showTabIndicator'),
     settingsBlur: option(LAUNCH, 'settingsModalBlur', 'options.settingsModalBlur'),
     settingsOpacity: option(LAUNCH, 'settingsModalOpacity', 'options.settingsModalOpacity'),
+    foldBlur: option(LAUNCH, 'settingsFoldBlur', 'options.settingsFoldBlur'),
+    foldOpacity: option(LAUNCH, 'settingsFoldOpacity', 'options.settingsFoldOpacity'),
     confirmOnExit: option(LAUNCH, 'confirmOnExit', 'options.confirmOnExit'),
     updateCheck: option(UPDATE, 'enableUpdateCheck', 'options.enableUpdateCheck'),
     autoUpdate: option(UPDATE, 'enableAutoUpdate', 'options.enableAutoUpdate'),
@@ -70,6 +72,11 @@ const GeneralPage: React.FC = () => {
     const setSettingsBlurPx = useSettingsModalStore(state => state.setSettingsBlurPx);
     const settingsOpacityPercent = useSettingsModalStore(state => state.settingsOpacityPercent);
     const setSettingsOpacityPercent = useSettingsModalStore(state => state.setSettingsOpacityPercent);
+    // 折叠组卡片自己的一份（与面板分开），调的时候这一组的卡片就在眼前。
+    const settingsFoldBlurPx = useSettingsModalStore(state => state.settingsFoldBlurPx);
+    const setSettingsFoldBlurPx = useSettingsModalStore(state => state.setSettingsFoldBlurPx);
+    const settingsFoldOpacityPercent = useSettingsModalStore(state => state.settingsFoldOpacityPercent);
+    const setSettingsFoldOpacityPercent = useSettingsModalStore(state => state.setSettingsFoldOpacityPercent);
     const confirmOnExit = usePlayerChromeSettingsStore(state => state.confirmOnExit);
     const setConfirmOnExit = usePlayerChromeSettingsStore(state => state.handleToggleConfirmOnExit);
     // 在线更新：开关、来源与最近一次检查结果都在这个 store 里，启动时的自动检查也读同一份。
@@ -173,6 +180,25 @@ const GeneralPage: React.FC = () => {
                         min={SETTINGS_OPACITY_MIN_PERCENT}
                         max={SETTINGS_OPACITY_MAX_PERCENT}
                         onChange={setSettingsOpacityPercent}
+                        format={value => `${value}%`}
+                    />
+                </Row>
+                {/* 折叠组卡片：浮在面板上的第二层玻璃，单独一档。0 = 卡片不模糊（面板照旧）。 */}
+                <Row option={O.foldBlur} note={t('options.settingsFoldBlurDesc')}>
+                    <Slider
+                        value={settingsFoldBlurPx}
+                        min={SETTINGS_BLUR_MIN_PX}
+                        max={SETTINGS_BLUR_MAX_PX}
+                        onChange={setSettingsFoldBlurPx}
+                        format={value => (value === 0 ? t('options.settingsModalBlurOff') : `${value}px`)}
+                    />
+                </Row>
+                <Row option={O.foldOpacity} note={t('options.settingsFoldOpacityDesc')}>
+                    <Slider
+                        value={settingsFoldOpacityPercent}
+                        min={SETTINGS_FOLD_OPACITY_MIN_PERCENT}
+                        max={SETTINGS_FOLD_OPACITY_MAX_PERCENT}
+                        onChange={setSettingsFoldOpacityPercent}
                         format={value => `${value}%`}
                     />
                 </Row>

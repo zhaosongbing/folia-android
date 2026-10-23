@@ -5,13 +5,14 @@ import type { LatticeCamera } from '../../../components/wall/useWallCameraPan';
 import { useWallPointerPan } from '../../../components/wall/useWallPointerPan';
 import {
     cameraFromViewCenter,
+    getViewLineX,
     getViewWorldBounds,
     viewCenterFromCamera,
     type WallView,
     type WallViewCenter,
 } from '../../../components/wall/wallView';
 import type { WallCameraRange } from '../../../components/wall/finiteWall';
-import { BRAVAIS_CAMERA_TWEEN_S, BRAVAIS_CULL_EDGE_MARGIN, BRAVAIS_OVERSCAN } from './bravaisConstants';
+import { BRAVAIS_CAMERA_TWEEN_S, BRAVAIS_CULL_EDGE_MARGIN, BRAVAIS_OVERSCAN, getBravaisScale } from './bravaisConstants';
 import { rubberBand } from './bravaisFiniteWall';
 import { computeBravaisFrame, getTiltReach } from './bravaisFrame';
 import type { BravaisFrameState } from './useBravaisFrame';
@@ -23,6 +24,11 @@ import type { BravaisFrameState } from './useBravaisFrame';
 
 // 一次补间最多预留几屏的范围，再大就只留目的地（渲染上限装不下）。
 const MAX_RESERVED_VIEWPORTS = 3;
+
+// 双指缩放的倍率范围，相对视口档位（getBravaisScale）：缩到 0.7 倍还能看见邻格的轮廓，
+// 放到 2.4 倍时一格几乎铺满屏幕 —— 再大就只剩一张封面，缩回去还要好几下。
+const MIN_ZOOM = 0.7;
+const MAX_ZOOM = 2.4;
 
 const area = (bounds: Bounds) => (bounds.right - bounds.left) * (bounds.bottom - bounds.top);
 
@@ -69,11 +75,14 @@ export const useBravaisCamera = ({
     renderFrame,
     fieldRef,
     reducedMotion,
+    pinchZoom,
 }: {
     frameRef: MutableRefObject<BravaisFrameState>;
     renderFrame: () => void;
     fieldRef: RefObject<HTMLDivElement | null>;
     reducedMotion: boolean;
+    /** 双指缩放开关（设置 → 主页与歌单）。关掉时手势层不接第二根手指，也不接 ctrl+滚轮。 */
+    pinchZoom: boolean;
 }) => {
     // 已裁剪（渲染了 slot）的可见范围；墙渲染它外扩 overscan 的 slot。
     const [bounds, setBounds] = useState<Bounds | null>(null);
@@ -125,6 +134,36 @@ export const useBravaisCamera = ({
         animationRef.current?.stop();
         animationRef.current = null;
     }, []);
+
+    /**
+     * 双指缩放：`factor` 是这次相对上次的比例，`anchor` 是两指中点（或光标）的屏幕坐标。
+     * 缩放锚定在这一点上：那一点下面的世界坐标保持不动，看起来才是「从这里放大」，而不是整墙跳一下。
+     * 缩放只改帧状态再重画（与拖动同一条路），不进 React state。
+     */
+    const zoomBy = useCallback((factor: number, anchor: { x: number; y: number }) => {
+        const state = frameRef.current;
+        const view = state.view;
+        if (!view) return;
+        const base = getBravaisScale(view.width);
+        const next = Math.min(base * MAX_ZOOM, Math.max(base * MIN_ZOOM, view.scale * factor));
+        // 已经顶到上下限、或者这一点点变化（子像素）不值得重画整墙。
+        if (!Number.isFinite(next) || Math.abs(next - view.scale) < 0.002) return;
+        const lineX = getViewLineX(view);
+        const worldX = state.center.x + (anchor.x - lineX) / view.scale;
+        const worldY = state.center.y + (anchor.y - view.height / 2) / view.scale;
+        state.view = { ...view, scale: next };
+        state.center = {
+            x: worldX - (anchor.x - lineX) / next,
+            y: worldY - (anchor.y - view.height / 2) / next,
+        };
+        // 缩放途中不该有别的相机动画在跑：它会按旧比例把中心写回去。
+        stopCamera();
+        syncPointerCamera();
+        renderFrame();
+        // 比例变了，可见的世界范围跟着变：按新范围裁一次。
+        checkCull(true);
+    }, [checkCull, frameRef, renderFrame, stopCamera, syncPointerCamera]);
+
 
     /** 补间到一个视图中心；开始时把目的地并进裁剪范围，免得飞行途中墙是空的。 */
     const tweenTo = useCallback((target: WallViewCenter, duration = BRAVAIS_CAMERA_TWEEN_S) => {
@@ -220,6 +259,7 @@ export const useBravaisCamera = ({
         cameraRef,
         getWorldBounds,
         viewportRef,
+        onPinch: pinchZoom ? zoomBy : undefined,
     });
 
     useEffect(() => () => {

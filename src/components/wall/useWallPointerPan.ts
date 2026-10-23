@@ -28,11 +28,16 @@ type WallPointerPanOptions = {
     cameraRef: MutableRefObject<LatticeCamera>;
     getWorldBounds: (camera: LatticeCamera, viewport: { width: number; height: number }) => Bounds;
     viewportRef: MutableRefObject<{ width: number; height: number }>;
+    /**
+     * 双指缩放（触屏的捏合、触控板的 ctrl+滚轮）：`factor` 是这一下相对上一次的比例，`anchor` 是两指中点
+     * （或光标）的屏幕坐标 —— 缩放以它为中心。不给就没有双指手势，墙只平移。
+     */
+    onPinch?: (factor: number, anchor: { x: number; y: number }) => void;
 };
 
 export const useWallPointerPan = ({
     applyCamera, animationRef, stopPan, containerRef, reducedMotion, overscan,
-    bounds, cameraRef, getWorldBounds, viewportRef,
+    bounds, cameraRef, getWorldBounds, viewportRef, onPinch,
 }: WallPointerPanOptions) => {
     const boundsRef = useRef(bounds);
     boundsRef.current = bounds;
@@ -47,6 +52,25 @@ export const useWallPointerPan = ({
     } | null>(null);
     // Read by the poster click handler so a drag that ends on a card does not open it.
     const didDragRef = useRef(false);
+
+    // 双指缩放：屏幕上按着的触点在册（只有触屏记；鼠标只有一个指针），第二根按下就进缩放态。
+    // 缩放态里平移让位给缩放 —— 两件事同时做会打架，而且第二根手指通常就是「我要放大」的意思。
+    const pinchRef = useRef<{ distance: number } | null>(null);
+    const touchPointsRef = useRef(new Map<number, { x: number; y: number }>());
+    // 滚轮监听只挂一次，回调走 ref：开关切换不该重新注册整页的 wheel。
+    const onPinchRef = useRef(onPinch);
+    onPinchRef.current = onPinch;
+
+    const trackPinchPoint = (event: PointerEvent<HTMLDivElement>) => {
+        if (event.pointerType !== 'touch') return;
+        touchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    };
+
+    const dropPinchPoint = (pointerId: number) => {
+        touchPointsRef.current.delete(pointerId);
+        // 少于两根手指就不再缩放；留下一根继续平移由 pointerRef 那边接管（它没被按过，不会接管）。
+        if (touchPointsRef.current.size < 2) pinchRef.current = null;
+    };
 
     // Republishing bounds is what triggers a re-cull, so only do it near the edge of what is culled.
     const updateCamera = useCallback((x: number, y: number) => {
@@ -66,6 +90,20 @@ export const useWallPointerPan = ({
     }, [stopPan]);
 
     const onPointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
+        // 第二根手指：进缩放态，先停掉可能已经开始的那段平移（否则手一抖墙就跟着跑）。
+        trackPinchPoint(event);
+        if (onPinchRef.current && event.pointerType === 'touch' && touchPointsRef.current.size === 2) {
+            const [a, b] = [...touchPointsRef.current.values()];
+            const distance = Math.hypot(a.x - b.x, a.y - b.y);
+            if (distance > 0) {
+                pinchRef.current = { distance };
+                pointerRef.current = null;
+                // 这一段手势不是点击：松手时别把指下的磁贴打开。
+                didDragRef.current = true;
+                interrupt();
+                return;
+            }
+        }
         if (event.button !== 0 || !event.isPrimary || pointerRef.current) return;
         interrupt();
         didDragRef.current = false;
@@ -83,6 +121,23 @@ export const useWallPointerPan = ({
     }, [cameraRef, interrupt]);
 
     const onPointerMove = useCallback((event: PointerEvent<HTMLDivElement>) => {
+        // 缩放态：两指距离的比例就是这一下的缩放比例，锚在两点中点上。
+        const pinch = pinchRef.current;
+        if (pinch && touchPointsRef.current.has(event.pointerId)) {
+            touchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+            const points = [...touchPointsRef.current.values()];
+            if (points.length >= 2 && onPinchRef.current) {
+                const [a, b] = points;
+                const distance = Math.hypot(a.x - b.x, a.y - b.y);
+                // 手指自带的小抖动不算：小于 0.5% 的变化不重画，否则墙一直在微调，看着就是抖。
+                if (pinch.distance > 0 && distance > 0 && Math.abs(distance / pinch.distance - 1) > 0.005) {
+                    const factor = distance / pinch.distance;
+                    pinch.distance = distance;
+                    onPinchRef.current(factor, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+                }
+                return;
+            }
+        }
         const pointer = pointerRef.current;
         if (!pointer || pointer.id !== event.pointerId) return;
         const dx = event.clientX - pointer.start.x;
@@ -103,6 +158,7 @@ export const useWallPointerPan = ({
 
     // Continue along the release velocity; stale samples and cancelled gestures never coast.
     const onPointerUp = useCallback((event: PointerEvent<HTMLDivElement>) => {
+        dropPinchPoint(event.pointerId);
         const pointer = pointerRef.current;
         if (!pointer || pointer.id !== event.pointerId) return;
         pointerRef.current = null;
@@ -120,6 +176,7 @@ export const useWallPointerPan = ({
     }, [animationRef, cameraRef, reducedMotion, updateCamera]);
 
     const onPointerCancel = useCallback((event: PointerEvent<HTMLDivElement>) => {
+        dropPinchPoint(event.pointerId);
         if (pointerRef.current?.id !== event.pointerId) return;
         pointerRef.current = null;
         interrupt();
@@ -209,7 +266,13 @@ export const useWallPointerPan = ({
             onWheel(event);
         };
         const onWheel = (event: WheelEvent) => {
-            if (event.ctrlKey || event.metaKey) return;
+            if (event.ctrlKey || event.metaKey) {
+                // 触控板的捏合在浏览器里就是带 ctrl 的滚轮：同一个手势，锚在光标上，不滚页面。
+                if (!onPinchRef.current) return;
+                event.preventDefault();
+                onPinchRef.current(Math.exp(-event.deltaY * 0.0025), { x: event.clientX, y: event.clientY });
+                return;
+            }
             event.preventDefault();
             holdLatch(event);
             if (pointerRef.current || inHandoff()) return;
@@ -242,7 +305,12 @@ export const useWallPointerPan = ({
             wheel.pending = { x: wheel.pending.x - dx, y: wheel.pending.y - dy };
             if (wheel.frame === null) wheel.frame = requestAnimationFrame(tick);
         };
-        const cancel = () => { pointerRef.current = null; interrupt(); };
+        const cancel = () => {
+            pointerRef.current = null;
+            pinchRef.current = null;
+            touchPointsRef.current.clear();
+            interrupt();
+        };
         // 只按修饰键（按住 Shift 横向滚动时 Shift 会自动重复 keydown）不算键盘输入，不打断平滑滚动。
         const onKeyDown = (event: KeyboardEvent) => {
             if (event.key === 'Shift' || event.key === 'Control' || event.key === 'Alt' || event.key === 'Meta') return;

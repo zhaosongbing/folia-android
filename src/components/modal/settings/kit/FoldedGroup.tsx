@@ -2,6 +2,7 @@ import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'reac
 import { ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { SettingsAnchor } from '../navigation/SettingsAnchorContext';
+import { useSettingsModalStore } from '../../../../stores/useSettingsModalStore';
 import { GROUP_CARD_CLASS, GROUP_SPACING_CLASS } from './Group';
 import type { SettingsGroupDef } from './options';
 import { Unfold } from './Reveal';
@@ -34,6 +35,10 @@ export const FoldedGroup: React.FC<FoldedGroupProps> = ({ def, summary, children
     const bodyId = useId();
     const rootRef = useRef<HTMLDivElement>(null);
     const [open, setOpen] = useState(false);
+    // 折叠组卡片自己的模糊与不透明度（设置 → 启动与窗口）。写在这张卡片上的两个变量，
+    // kit.css 里 [data-fold-card] 那一组规则读它们；不设值时退回面板的模糊与原来的 72% 底色。
+    const foldBlurPx = useSettingsModalStore(state => state.settingsFoldBlurPx);
+    const foldOpacityPercent = useSettingsModalStore(state => state.settingsFoldOpacityPercent);
     // Set while the group was opened by a landing rather than by its own row.
     const [instant, setInstant] = useState(false);
     // What landings asked to run, and how many asked: each is answered, also when the group was
@@ -66,7 +71,16 @@ export const FoldedGroup: React.FC<FoldedGroupProps> = ({ def, summary, children
 
     return (
         <SettingsAnchor anchorId={def.id} label={title} className={GROUP_SPACING_CLASS}>
-            <div ref={rootRef} data-settings-fold className={GROUP_CARD_CLASS}>
+            <div
+                ref={rootRef}
+                data-settings-fold
+                data-fold-card
+                className={GROUP_CARD_CLASS}
+                style={{
+                    '--st-fold-filter': foldBlurPx > 0 ? `blur(${foldBlurPx}px)` : 'none',
+                    '--st-fold-opacity': `${foldOpacityPercent}%`,
+                } as React.CSSProperties}
+            >
                 <button
                     type="button"
                     aria-expanded={open}

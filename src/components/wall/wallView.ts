@@ -29,8 +29,16 @@ export const getViewLineX = (view: WallView) => view.lineX ?? view.width / 2;
  * a drag or a camera tween. Moving in whole device pixels keeps that fraction fixed, so panning only moves
  * tiles, the same way the browser snaps its own scroll offsets.
  */
+/**
+ * 一个长度吸附到整设备像素。世界层与缝（页面内容那一栏）都用它：图层没有 will-change 时，Chromium
+ * 按像素网格对齐栅格，位移的小数部分一变就把整层丢掉重新栅格化 —— 表现为拖动时文字发虚、偶尔闪一下。
+ */
+export const snapToDevicePixel = (value: number, devicePixelRatio = window.devicePixelRatio || 1) => (
+    Math.round(value * devicePixelRatio) / devicePixelRatio
+);
+
 export const formatWorldTransform = (x: number, y: number, scale: number, devicePixelRatio = window.devicePixelRatio || 1) => {
-    const snap = (value: number) => Math.round(value * devicePixelRatio) / devicePixelRatio;
+    const snap = (value: number) => snapToDevicePixel(value, devicePixelRatio);
     return `translate3d(${snap(x)}px, ${snap(y)}px, 0) scale(${scale})`;
 };
 

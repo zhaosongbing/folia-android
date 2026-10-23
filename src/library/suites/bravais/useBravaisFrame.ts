@@ -1,5 +1,5 @@
-import { useCallback, useRef, type RefObject } from 'react';
-import { formatWorldTransform, type WallView, type WallViewCenter } from '../../../components/wall/wallView';
+import { useCallback, useEffect, useRef, type RefObject } from 'react';
+import { formatWorldTransform, snapToDevicePixel, type WallView, type WallViewCenter } from '../../../components/wall/wallView';
 import { computeBravaisFrame, posterSafeArea, withTilt } from './bravaisFrame';
 
 // src/library/suites/bravais/useBravaisFrame.ts
@@ -42,6 +42,17 @@ export const useBravaisFrame = (refs: BravaisFrameRefs) => {
         poster: false,
         tiltDeg: 0,
     });
+    /**
+     * 上一次写进 DOM 的那几个值。拖动时一帧一帧地重画，绝大多数帧里缝的宽度与位置其实没变
+     * （相机在动、缝在世界里没动），重复写同样的 transform 只是白白让浏览器重新解析一遍样式。
+     */
+    const writtenRef = useRef({ left: '', right: '', seam: '', width: '' });
+    /** 缝正在动（宽度或位置刚变过）：停下来 140ms 之后清掉。 */
+    const movingTimerRef = useRef<number | null>(null);
+
+    useEffect(() => () => {
+        if (movingTimerRef.current !== null) window.clearTimeout(movingTimerRef.current);
+    }, []);
 
     const renderFrame = useCallback(() => {
         const state = stateRef.current;
@@ -57,13 +68,44 @@ export const useBravaisFrame = (refs: BravaisFrameRefs) => {
             tiltDeg: state.tiltDeg,
         });
         const { left, right, seam, seamContent, tab } = refs;
-        if (left.current) left.current.style.transform = withTilt(formatWorldTransform(frame.left.x, frame.left.y, frame.scale), frame.tilt);
-        if (right.current) right.current.style.transform = withTilt(formatWorldTransform(frame.right.x, frame.right.y, frame.scale), frame.tilt);
+        const written = writtenRef.current;
+        const leftTransform = withTilt(formatWorldTransform(frame.left.x, frame.left.y, frame.scale), frame.tilt);
+        if (left.current && written.left !== leftTransform) {
+            left.current.style.transform = leftTransform;
+            written.left = leftTransform;
+        }
+        const rightTransform = withTilt(formatWorldTransform(frame.right.x, frame.right.y, frame.scale), frame.tilt);
+        if (right.current && written.right !== rightTransform) {
+            right.current.style.transform = rightTransform;
+            written.right = rightTransform;
+        }
         const seamElement = seam.current;
         if (seamElement) {
             // 缝与两半墙同一层：倾斜时一起转（缝的 transform-origin 对准屏幕原点，见 bravais.css / bravaisPoster.css）。
-            seamElement.style.transform = withTilt(`translate3d(${frame.seam.x - frame.seam.width / 2}px, 0, 0)`, frame.tilt);
-            seamElement.style.width = `${frame.seam.width}px`;
+            // 位移与宽度都吸附到整设备像素，理由与世界层同一份（wallView 的 snapToDevicePixel）：
+            // 缝里的文字与列表本来就在小数位移下每帧重新栅格化，看着就是发虚、偶尔闪一下。
+            const seamShift = snapToDevicePixel(frame.seam.x - frame.seam.width / 2);
+            const seamTransform = withTilt(`translate3d(${seamShift}px, 0, 0)`, frame.tilt);
+            const seamWidth = `${Math.max(0, snapToDevicePixel(frame.seam.width))}px`;
+            const seamMoving = written.seam !== seamTransform || written.width !== seamWidth;
+            if (seamMoving) {
+                if (written.seam !== seamTransform) {
+                    seamElement.style.transform = seamTransform;
+                    written.seam = seamTransform;
+                }
+                if (written.width !== seamWidth) {
+                    seamElement.style.width = seamWidth;
+                    written.width = seamWidth;
+                }
+                // 缝在变尺寸/位置时先不画它的 backdrop-filter（见 bravais.css 里那条规则）：18px 的高斯模糊
+                // 每帧都要按新尺寸重采一次背后的画面，Android 的 WebView 顶不住，看起来就是拖动时偶尔闪、抖。
+                seamElement.dataset.bravaisMoving = '1';
+                if (movingTimerRef.current !== null) window.clearTimeout(movingTimerRef.current);
+                movingTimerRef.current = window.setTimeout(() => {
+                    movingTimerRef.current = null;
+                    if (seamElement.dataset.bravaisMoving) delete seamElement.dataset.bravaisMoving;
+                }, 140);
+            }
             const visibility = frame.seam.visible ? 'visible' : 'hidden';
             if (seamElement.style.visibility !== visibility) seamElement.style.visibility = visibility;
         }

@@ -19,6 +19,16 @@
     background-color: color-mix(in srgb, var(--st-card) 72%, transparent);
 }
 
+/* 折叠组卡片可以单独调模糊与底色（设置 → 启动与窗口）：FoldedGroup 在卡片上写 --st-fold-filter /
+   --st-fold-opacity，这里按它们覆盖 .st-glass 与 .st-glass-card。没有这两个变量时（普通分组）保持原样。
+   透明度和模糊分开调的理由：卡片是浮在面板之上的第二层玻璃，面板调很透时卡片要更实一点才看得清字，
+   反过来面板很实、背后没有东西可透时，卡片的模糊只是白花钱。 */
+.st-glass-card[data-fold-card] {
+    backdrop-filter: var(--st-fold-filter, var(--st-glass-filter, none));
+    -webkit-backdrop-filter: var(--st-fold-filter, var(--st-glass-filter, none));
+    background-color: color-mix(in srgb, var(--st-card) var(--st-fold-opacity, 72%), transparent);
+}
+
 /* 弹出的列表（下拉、更多）：菜单本身也要能看见背后模糊过的内容。
    比卡片更透（68% vs 72%）：它是浮在卡片之上的一层，太实就像把卡片挖了个白洞。 */
 .st-glass-pop {

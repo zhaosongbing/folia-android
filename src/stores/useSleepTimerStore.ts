@@ -14,6 +14,9 @@ export const SLEEP_TIMER_MINUTES_STORAGE_KEY = 'sleep_timer_minutes';
 
 export const SLEEP_TIMER_CLOSE_MODE_STORAGE_KEY = 'sleep_timer_close_mode';
 
+/** 没设时长就打开定时关闭时用的时长（分钟）。 */
+export const DEFAULT_SLEEP_TIMER_MINUTES = 15;
+
 /**
  * 到点之后怎么关：
  * - `immediate`：立刻停下（老行为）。
@@ -78,12 +81,18 @@ export const useSleepTimerStore = create<SleepTimerState>((set, get) => ({
     sleepTimerCloseMode: readStoredSleepTimerCloseMode(),
     sleepTimerHoldsForTrackEnd: false,
     handleToggleSleepTimer: (enable) => {
+        // 打开时如果还没设时长，给一个默认的 15 分钟，而不是什么都不做。
+        // 以前这里只弹一句「先设个时长」，可面板上的开关就在时长那一行的上面一行，
+        // 很容易变成「点了开关没反应」——这一次的反馈就是这么来的。
+        // 没设时长时补的那一句比「已开启」有用，就别被后面那句盖掉了。
+        let usedDefaultDuration = false;
         if (enable && get().sleepTimerHours === 0 && get().sleepTimerMinutes === 0) {
-            setStatusMessage({
-                type: 'error',
-                text: i18n.t('commandPalette.sleepTimerDurationRequired'),
-            });
-            return;
+            usedDefaultDuration = true;
+            if (typeof window !== 'undefined') {
+                localStorage.setItem(SLEEP_TIMER_HOURS_STORAGE_KEY, '0');
+                localStorage.setItem(SLEEP_TIMER_MINUTES_STORAGE_KEY, String(DEFAULT_SLEEP_TIMER_MINUTES));
+            }
+            set({ sleepTimerHours: 0, sleepTimerMinutes: DEFAULT_SLEEP_TIMER_MINUTES });
         }
         set(state => ({
             sleepTimerEnabled: enable,
@@ -94,10 +103,15 @@ export const useSleepTimerStore = create<SleepTimerState>((set, get) => ({
                 ? state.sleepTimerActivationId + 1
                 : state.sleepTimerActivationId,
         }));
-        setStatusMessage({
-            type: 'info',
-            text: i18n.t('notifications.' + (enable ? 'sleepTimerOn' : 'sleepTimerOff')),
-        });
+        setStatusMessage(usedDefaultDuration
+            ? {
+                type: 'info',
+                text: i18n.t('notifications.sleepTimerDefaultDuration', { minutes: DEFAULT_SLEEP_TIMER_MINUTES }),
+            }
+            : {
+                type: 'info',
+                text: i18n.t('notifications.' + (enable ? 'sleepTimerOn' : 'sleepTimerOff')),
+            });
     },
     handleSetSleepTimerHours: (hours) => {
         const clamped = Math.min(999, Math.max(0, Math.floor(hours) || 0));
