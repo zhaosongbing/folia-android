@@ -3,10 +3,16 @@
 # 追加到仓库 README 的「更新日志」章节顶部。
 #
 # 用法：
-#   ./scripts/publish-android-release.sh <apk 路径> <更新日志 md 路径> [版本号]
+#   ./scripts/publish-android-release.sh <apk 路径> <更新日志 md 路径> [版本号] [通道]
 #
 # 版本号省略时读 package.json 的 version（构建时 __APP_VERSION__ 取的也是它，
 # Android 的 versionName 要与之一致，否则应用内比较会错位）。
+#
+# 通道：stable（正式版，默认）/ beta（内测版）/ dev（测试版）。
+# 三种包发在同一个仓库，靠 tag 前缀区分，应用内按通道挑选：
+#   stable → v0.7.22.0        beta → beta-v0.7.22.0      dev → dev-v0.7.22.0
+# 非正式通道的 release 标成 prerelease（网页上带 Pre-release 标记，不会被当成最新版式发布）。
+# 通道与 tag 前缀的规则只在 src/services/releaseChannel.ts 里写一份，改规则要两边一起改。
 #
 # 依赖：gh 已登录且对目标仓库有写权限；python 在 PATH 里（用来改 README）。
 
@@ -16,11 +22,22 @@ REPO="zhaosongbing/folia-android-releases"
 APK="${1:-}"
 NOTES="${2:-}"
 VERSION="${3:-}"
+CHANNEL="${4:-stable}"
 
 if [ -z "$APK" ] || [ -z "$NOTES" ]; then
-    echo "用法：$0 <apk 路径> <更新日志 md 路径> [版本号]" >&2
+    echo "用法：$0 <apk 路径> <更新日志 md 路径> [版本号] [stable|beta|dev]" >&2
     exit 1
 fi
+
+case "$CHANNEL" in
+    stable) TAG_PREFIX=""; CHANNEL_LABEL=""; PRERELEASE=0 ;;
+    beta)   TAG_PREFIX="beta-"; CHANNEL_LABEL="（内测）"; PRERELEASE=1 ;;
+    dev)    TAG_PREFIX="dev-"; CHANNEL_LABEL="（测试）"; PRERELEASE=1 ;;
+    *)
+        echo "通道只能是 stable / beta / dev：$CHANNEL" >&2
+        exit 1
+        ;;
+esac
 
 [ -f "$APK" ] || { echo "找不到 APK：$APK" >&2; exit 1; }
 [ -f "$NOTES" ] || { echo "找不到更新日志：$NOTES" >&2; exit 1; }
@@ -29,7 +46,7 @@ if [ -z "$VERSION" ]; then
     VERSION=$(node -p "require('./package.json').version")
 fi
 
-TAG="v${VERSION}"
+TAG="${TAG_PREFIX}v${VERSION}"
 
 # 在线更新只认 release 资产里以 .apk 结尾的文件，这里先确认一下
 case "$(basename "$APK" | tr '[:upper:]' '[:lower:]')" in
@@ -41,6 +58,7 @@ case "$(basename "$APK" | tr '[:upper:]' '[:lower:]')" in
 esac
 
 echo "仓库：$REPO"
+echo "通道：$CHANNEL${CHANNEL_LABEL}"
 echo "标签：$TAG"
 echo "APK ：$APK（$(stat -c%s "$APK" 2>/dev/null || echo '?') 字节）"
 echo "日志：$NOTES"
@@ -51,11 +69,22 @@ if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
     gh release upload "$TAG" "$APK" --repo "$REPO" --clobber
     gh release edit "$TAG" --repo "$REPO" --notes-file "$NOTES"
 else
-    gh release create "$TAG" \
-        --repo "$REPO" \
-        --title "Folia for Android ${VERSION}" \
-        --notes-file "$NOTES" \
-        "$APK"
+    # 非正式通道标成 prerelease：网页上不会被当成「最新版式发布」，
+    # GitHub 的 releases/latest 也不会把它当正式最新版（应用内按 tag 前缀自取，两边不冲突）。
+    if [ "$PRERELEASE" = "1" ]; then
+        gh release create "$TAG" \
+            --repo "$REPO" \
+            --title "Folia for Android ${VERSION}${CHANNEL_LABEL}" \
+            --notes-file "$NOTES" \
+            --prerelease \
+            "$APK"
+    else
+        gh release create "$TAG" \
+            --repo "$REPO" \
+            --title "Folia for Android ${VERSION}" \
+            --notes-file "$NOTES" \
+            "$APK"
+    fi
 fi
 
 # ---- 2. README 的更新日志 ----
@@ -71,7 +100,7 @@ README_SHA=$(gh api "repos/$REPO/contents/README.md" --jq '.sha')
 
 # 把更新日志压成「### 版本」+ 原始正文，插到「## 更新日志」之后
 {
-  echo "### ${VERSION}"
+  echo "### ${VERSION}${CHANNEL_LABEL}"
   echo
   # 去掉正文里的一级标题（重复了）与行尾空白
   sed '/^## Folia for Android/d' "$NOTES"
@@ -128,8 +157,10 @@ if [ -n "${GITEE_TOKEN:-}" ]; then
     echo "发布到 Gitee…"
     python scripts/gitee_release.py \
         --owner zhaosongbing --repo folia \
-        --tag "$TAG" --name "Folia ${VERSION}" \
-        --body "$NOTES" --apk "$APK" || echo "Gitee 发布失败，GitHub 已完成" >&2
+        --tag "$TAG" --name "Folia ${VERSION}${CHANNEL_LABEL}" \
+        --body "$NOTES" --apk "$APK" \
+        $([ "$PRERELEASE" = "1" ] && echo "--prerelease") \
+        || echo "Gitee 发布失败，GitHub 已完成" >&2
 else
     echo "未设置 GITEE_TOKEN，跳过 Gitee（应用内会回退到 GitHub 源）"
 fi

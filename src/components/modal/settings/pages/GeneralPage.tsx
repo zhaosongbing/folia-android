@@ -38,6 +38,7 @@ const O = {
     updateCheck: option(UPDATE, 'enableUpdateCheck', 'options.enableUpdateCheck'),
     autoUpdate: option(UPDATE, 'enableAutoUpdate', 'options.enableAutoUpdate'),
     appUpdateOnLaunch: option(APP_UPDATE, 'enableAppUpdateCheck', 'options.enableAppUpdateCheck'),
+    appUpdateChannel: option(APP_UPDATE, 'appUpdateChannel', 'options.appUpdateChannelLabel'),
     appUpdateNow: option(APP_UPDATE, 'checkAppUpdateNow', 'options.checkAppUpdateNow'),
     updateChannel: option(UPDATE, 'updateChannel', 'options.updateChannel'),
     ponderHints: option(PONDER, 'ponderHintVisibility', 'options.ponderHints'),
@@ -75,12 +76,19 @@ const GeneralPage: React.FC = () => {
     const appUpdate = useAppUpdateStore(useShallow(state => ({
         enableAppUpdateCheck: state.enableAppUpdateCheck,
         handleToggleAppUpdateCheck: state.handleToggleAppUpdateCheck,
+        channel: state.channel,
+        handleSetUpdateChannel: state.handleSetUpdateChannel,
         currentVersion: state.currentVersion,
         isChecking: state.isChecking,
         lastResult: state.lastResult,
         availableUpdate: state.availableUpdate,
         checkNow: state.checkNow,
     })));
+    const channelLabel = (channel: typeof appUpdate.channel) => (
+        channel === 'beta' ? t('options.appUpdateChannelBeta')
+            : channel === 'dev' ? t('options.appUpdateChannelDev')
+                : t('options.appUpdateChannelStable')
+    );
     const appUpdateHint = (() => {
         if (appUpdate.isChecking) return t('appUpdate.checking');
         if (appUpdate.availableUpdate) {
@@ -170,9 +178,25 @@ const GeneralPage: React.FC = () => {
                 </Row>
             </FoldedGroup>
 
-            <FoldedGroup def={APP_UPDATE} summary={t('appUpdate.currentVersionShort', { version: appUpdate.currentVersion })}>
+            <FoldedGroup
+                def={APP_UPDATE}
+                summary={`${t('appUpdate.currentVersionShort', { version: appUpdate.currentVersion })} · ${channelLabel(appUpdate.channel)}`}
+            >
                 <Row option={O.appUpdateOnLaunch} hint={t('options.enableAppUpdateCheckDesc')}>
                     <Toggle checked={appUpdate.enableAppUpdateCheck} onChange={appUpdate.handleToggleAppUpdateCheck} />
+                </Row>
+                {/* 三条通道发在同一个仓库里，靠 tag 前缀区分：正式版 v…、内测版 beta-v…、测试版 dev-v…。
+                    通道向下兼容（内测也会收到正式版的热修），所以这里不写「只看某一种」。 */}
+                <Row option={O.appUpdateChannel} note={t('options.appUpdateChannelDesc')}>
+                    <Segmented
+                        value={appUpdate.channel}
+                        options={[
+                            { value: 'stable', label: t('options.appUpdateChannelStable') },
+                            { value: 'beta', label: t('options.appUpdateChannelBeta') },
+                            { value: 'dev', label: t('options.appUpdateChannelDev') },
+                        ]}
+                        onChange={appUpdate.handleSetUpdateChannel}
+                    />
                 </Row>
                 <Row option={O.appUpdateNow} hint={appUpdateHint}>
                     <Button

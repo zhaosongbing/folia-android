@@ -24,8 +24,12 @@
 
 /* Poster content stays square, while independent navigation and utility chrome keeps its shape. */
 /* 限定在 Lattice 自己的根（.lattice-queue-root，与 .lattice-root 挂在同一个元素上，特异度不变）：wall.css 让 bravais
-   也用 .lattice-root，Lattice 的 chunk 一旦加载，这条 !important 会把 bravais 缝里的圆角按钮压成直角（B4 记下的泄漏）。 */
-.lattice-queue-root *:not(.lattice-tools *):not(.lattice-back):not(.lattice-chrome button) {
+   也用 .lattice-root，Lattice 的 chunk 一旦加载，这条 !important 会把 bravais 缝里的圆角按钮压成直角（B4 记下的泄漏）。
+   [data-grid-locate] 与它整棵子树要一起豁免：定位按钮已经从 .lattice-tools 的竖列里搬出来（LocateFloatingSlot），
+   落在 `.lattice-tools *` 这条豁免之外，于是被这里压成方形 —— 只豁免按钮本身也不够，
+   里面的定位光环（.locate-ring / .locate-seeking）与图标同样是 `*` 命中的对象，圆环会变成方框。
+   这条规则只在 Lattice 的 chunk 加载后才生效，所以表现是「偶尔」变方：先进过 Lattice 才出现。 */
+.lattice-queue-root *:not(.lattice-tools *):not(.lattice-back):not(.lattice-chrome button):not([data-grid-locate]):not([data-grid-locate] *) {
     border-radius: 0 !important;
 }
 

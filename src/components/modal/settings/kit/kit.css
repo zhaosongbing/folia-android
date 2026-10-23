@@ -19,9 +19,10 @@
     background-color: color-mix(in srgb, var(--st-card) 72%, transparent);
 }
 
-/* 弹出的列表（下拉、更多）：菜单本身也要能看见背后模糊过的内容。 */
+/* 弹出的列表（下拉、更多）：菜单本身也要能看见背后模糊过的内容。
+   比卡片更透（68% vs 72%）：它是浮在卡片之上的一层，太实就像把卡片挖了个白洞。 */
 .st-glass-pop {
-    background-color: color-mix(in srgb, var(--st-menu) 84%, transparent);
+    background-color: color-mix(in srgb, var(--st-menu) 68%, transparent);
 }
 .st-window :focus-visible:not(input, textarea, select) {
     outline: 2px solid var(--st-accent);

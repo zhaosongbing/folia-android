@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Undo2 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
+import ConfirmDialog from '../../../shared/ConfirmDialog';
 import { isBravaisLibraryActive, useIsBravaisLibraryActive } from '../../../../library/app/bravaisLibraryActive';
 import { useLibraryWallLookStore } from '../../../../stores/useLibraryWallLookStore';
 import { closeSettings } from '../../../../stores/useSettingsModalStore';
@@ -22,7 +24,7 @@ import {
     LIBRARY_WALL_SEAM_STYLES,
     type LibraryWallSeamStyle,
 } from '../../../../utils/libraryWallSeamStyle';
-import { Button, FoldedGroup, PictureChoice, Reveal, Row, Segmented, Slider, TextField, Toggle, option, type SettingsGroupDef } from '../kit';
+import { Button, FoldedGroup, PictureChoice, Reveal, Row, Segmented, Slider, TextField, Toggle, option, useSettingsKitTheme, type SettingsGroupDef } from '../kit';
 
 // src/components/modal/settings/pages/BravaisWallGroup.tsx
 // The Bravais 墙面 group of the 主页与歌单 page: every setting only the bravais library UI has. How
@@ -88,6 +90,8 @@ export const BravaisWallGroup: React.FC = () => {
     const isBravaisActive = useIsBravaisLibraryActive();
     // 标题是自由文本：用草稿 + 失焦/回车提交，避免每敲一个字就往存储里写一次。
     const [titleDraft, setTitleDraft] = useState('');
+    // 复位要问一次：位置与大小都是慢慢拖出来的，误触一次就得重来。
+    const [resetAsking, setResetAsking] = useState<'offsets' | 'scale' | null>(null);
     const wall = useLibraryWallLookStore(useShallow(state => ({
         look: state.look,
         windowsPerBlock: state.windowsPerBlock,
@@ -112,6 +116,7 @@ export const BravaisWallGroup: React.FC = () => {
     if (!isBravaisActive) return null;
 
     const glyph = t('options.bravaisSeamSwatchGlyph');
+    const { isDaylight } = useSettingsKitTheme();
 
     // ---- 浮层（位置 + 大小） ----
     // 位置没有滑杆了：编辑态里拖。这里只留入口、复位与大小。
@@ -199,8 +204,18 @@ export const BravaisWallGroup: React.FC = () => {
 
         <FoldedGroup def={WALL_CHROME}>
             {/* 编辑态入口：打开后设置直接收起 —— 编辑层画在设置弹窗之上，开着弹窗既看不清也拖不动。
-                进入后是独立的会话（顶部有取消 / 完成），所以这个开关本身也会被那两颗按钮关掉。 */}
+                进入后是独立的会话（顶部有取消 / 完成），所以这个开关本身也会被那两颗按钮关掉。
+                「全部复位」并进这一行（实测反馈：不需要单独占一行），点了先问一次 —— 拖散的浮层比
+                按错的开关难找回得多。 */}
             <Row option={O.chromeEditMode} note={t('options.chromeEditModeDesc')}>
+                <Button
+                    variant="quiet"
+                    icon={Undo2}
+                    tip={t('options.wallChromeOffsetsReset')}
+                    onClick={() => setResetAsking('offsets')}
+                >
+                    {t('options.wallChromeOffsetsReset')}
+                </Button>
                 <Toggle
                     checked={chrome.chromeEditMode}
                     onChange={value => {
@@ -209,14 +224,16 @@ export const BravaisWallGroup: React.FC = () => {
                     }}
                 />
             </Row>
-            {/* 位置不再逐个列滑杆：编辑态里拖。这里留一键复位 ——
-                拖散的浮层比调错的滑块更难找回原处。 */}
-            <Row hint={t('options.wallChromeOffsetsDesc')}>
-                <Button variant="quiet" onClick={() => chrome.reset()}>
-                    {t('options.wallChromeOffsetsReset')}
-                </Button>
-            </Row>
             <Row option={O.scale} note={t('options.wallChromeScaleDesc')}>
+                {/* 复位与滑杆同一行：它是这一档的回退，不该再单独占一行。 */}
+                <Button
+                    variant="quiet"
+                    icon={Undo2}
+                    tip={t('options.wallChromeSizesReset')}
+                    onClick={() => setResetAsking('scale')}
+                >
+                    {t('options.wallChromeSizesReset')}
+                </Button>
                 <Slider
                     value={chrome.scale}
                     min={WALL_CHROME_SCALE_MIN_PERCENT}
@@ -226,12 +243,6 @@ export const BravaisWallGroup: React.FC = () => {
                     format={fmtScale}
                 />
             </Row>
-            {/* 比例一起调乱时，一键回到原尺寸 */}
-            <Row hint={t('options.wallChromeSizesDesc')}>
-                <Button variant="quiet" onClick={() => chrome.resetScale()}>
-                    {t('options.wallChromeSizesReset')}
-                </Button>
-            </Row>
             <Row option={O.showLocate} note={t('options.showLocateButtonDesc')}>
                 <Toggle checked={chrome.showLocateButton} onChange={chrome.toggleLocateButton} />
             </Row>
@@ -239,6 +250,22 @@ export const BravaisWallGroup: React.FC = () => {
                 <Toggle checked={chrome.showToolsButton} onChange={chrome.toggleToolsButton} />
             </Row>
         </FoldedGroup>
+
+        {/* 复位要二次确认：位置与大小都是一点点拖出来的，误触一次就得重来。 */}
+        <ConfirmDialog
+            isOpen={resetAsking !== null}
+            isDaylight={isDaylight}
+            title={t(resetAsking === 'scale' ? 'options.wallChromeResetScaleTitle' : 'options.wallChromeResetOffsetsTitle')}
+            description={t(resetAsking === 'scale' ? 'options.wallChromeResetScaleDesc' : 'options.wallChromeResetOffsetsDesc')}
+            confirmText={t(resetAsking === 'scale' ? 'options.wallChromeSizesReset' : 'options.wallChromeOffsetsReset')}
+            confirmVariant="danger"
+            onConfirm={() => {
+                if (resetAsking === 'scale') chrome.resetScale();
+                else chrome.reset();
+                setResetAsking(null);
+            }}
+            onClose={() => setResetAsking(null)}
+        />
         </>
     );
 };

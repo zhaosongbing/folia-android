@@ -14,10 +14,13 @@ import {
     type AppUpdateInfo,
     type AppUpdateCheckResult,
 } from '../services/appUpdate';
+import { isReleaseChannel, type ReleaseChannel } from '../services/releaseChannel';
 
 const ENABLE_KEY = 'enable_app_update_check';
 const SKIPPED_VERSION_KEY = 'app_update_skipped_version';
 const SOURCE_URL_KEY = 'app_update_source_url';
+/** 通道：stable / beta / dev。默认正式版（老用户升级上来不会突然收到内测包）。 */
+const CHANNEL_KEY = 'app_update_channel';
 
 const readStoredString = (key: string, fallback: string): string => {
     if (typeof window === 'undefined') return fallback;
@@ -31,11 +34,20 @@ const readSkippedVersion = (): string | null => {
     return value && value.trim() ? value.trim() : null;
 };
 
+/** 通道读存储；认不出的值（老版本留下的、手改过的）一律回正式版。 */
+const readChannel = (): ReleaseChannel => {
+    if (typeof window === 'undefined') return 'stable';
+    const value = localStorage.getItem(CHANNEL_KEY);
+    return isReleaseChannel(value) ? value : 'stable';
+};
+
 export type AppUpdateState = {
     /** 允许检查更新。默认开。 */
     enableAppUpdateCheck: boolean;
     /** 更新源（GitHub releases/latest 形式的 URL）。 */
     sourceUrl: string;
+    /** 要哪条通道：正式版 / 内测版 / 测试版。 */
+    channel: ReleaseChannel;
     /** 用户选择「稍后」时记下的版本，同一个版本不再打扰。 */
     skippedVersion: string | null;
     /** 当前版本，来自构建注入。 */
@@ -48,6 +60,8 @@ export type AppUpdateState = {
 
     handleToggleAppUpdateCheck: (enable: boolean) => void;
     handleSetUpdateSourceUrl: (url: string) => void;
+    /** 切通道：清掉「稍后」的记录，下一次检查就能看到新通道的版本。 */
+    handleSetUpdateChannel: (channel: ReleaseChannel) => void;
     handleSkipUpdateVersion: (version: string) => void;
     /**
      * 执行一次检查。
@@ -62,6 +76,7 @@ export type AppUpdateState = {
 export const useAppUpdateStore = create<AppUpdateState>((set, get) => ({
     enableAppUpdateCheck: getStoredBoolean(ENABLE_KEY, true),
     sourceUrl: readStoredString(SOURCE_URL_KEY, DEFAULT_UPDATE_SOURCE_URL),
+    channel: readChannel(),
     skippedVersion: readSkippedVersion(),
     currentVersion: getCurrentAppVersion(),
     isChecking: false,
@@ -89,10 +104,19 @@ export const useAppUpdateStore = create<AppUpdateState>((set, get) => ({
         set({ skippedVersion: version, availableUpdate: null });
     },
 
+    handleSetUpdateChannel: (channel) => {
+        if (typeof window !== 'undefined') {
+            localStorage.setItem(CHANNEL_KEY, channel);
+            // 换通道后旧的「稍后」没有意义：那是另一条通道上的某个版本。
+            localStorage.removeItem(SKIPPED_VERSION_KEY);
+        }
+        set({ channel, skippedVersion: null, availableUpdate: null, lastResult: 'idle' });
+    },
+
     dismissUpdate: () => set({ availableUpdate: null }),
 
     checkNow: async (manual) => {
-        const { enableAppUpdateCheck, sourceUrl, skippedVersion } = get();
+        const { enableAppUpdateCheck, sourceUrl, channel, skippedVersion } = get();
         if (!enableAppUpdateCheck && !manual) {
             return 'disabled';
         }
@@ -100,11 +124,11 @@ export const useAppUpdateStore = create<AppUpdateState>((set, get) => ({
         set({ isChecking: true, lastResult: 'checking' });
         // 先问用户配置的源；失败就依次试其它源（Gitee 优先、GitHub 兜底）。
         // 单一源在国内网络下经常连不上，多试一个成本很低、明显更稳。
-        let result: AppUpdateCheckResult = await checkForAppUpdate(sourceUrl);
+        let result: AppUpdateCheckResult = await checkForAppUpdate(sourceUrl, channel);
         if (result.status === 'error') {
             for (const fallback of DEFAULT_UPDATE_SOURCES) {
                 if (fallback === sourceUrl) continue;
-                const retried = await checkForAppUpdate(fallback);
+                const retried = await checkForAppUpdate(fallback, channel);
                 if (retried.status !== 'error') {
                     result = retried;
                     break;

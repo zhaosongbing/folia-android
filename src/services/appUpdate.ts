@@ -31,6 +31,10 @@ export type AppUpdateInfo = {
     downloadUrl: string | null;
     /** 发布时间，ISO 字符串 */
     publishedAt: string;
+    /** 这条发布来自哪条通道（tag 前缀决定）。 */
+    releaseChannel: ReleaseChannel;
+    /** 原始 tag，例如 `beta-v0.7.22.0`。 */
+    tag: string;
 };
 
 export type AppUpdateCheckResult =
@@ -46,6 +50,14 @@ export const getCurrentAppVersion = (): string => {
         return '0.0.0';
     }
 };
+
+import {
+    channelAcceptsTag,
+    channelOfTag,
+    releaseListUrl,
+    stripChannelPrefix,
+    type ReleaseChannel,
+} from './releaseChannel';
 
 /**
  * 把版本号拆成数字段，'v1.2.3-beta.1' → [1, 2, 3]。
@@ -105,12 +117,13 @@ const VERSION_PATTERN = /(\d+\.\d+(?:\.\d+)*)/;
 /**
  * 决定这次发布的版本号。
  *
- * 先看 tag；tag 里没有数字时（Gitee 上有人把 tag 直接写成 `folia`），退而从 APK 资产名里找
+ * 先剥掉通道前缀（`beta-v0.8.0.0` → `0.8.0.0`），再看 tag；tag 里没有数字时
+ * （Gitee 上有人把 tag 直接写成 `folia`），退而从 APK 资产名里找
  * （`Folia-0.7.21.15-release.apk` → `0.7.21.15`）。没有这一步，Gitee 源的版本号会解析成
  * 0.0.0，永远判定「已是最新」。
  */
 export const resolveLatestVersion = (tag: string, assets: GithubReleaseAsset[]): string => {
-    const fromTag = tag.trim().replace(/^v/i, '');
+    const fromTag = stripChannelPrefix(tag).replace(/^v/i, '');
     if (/\d/.test(fromTag)) return fromTag;
     for (const asset of assets) {
         const name = asset.name ?? '';
@@ -144,20 +157,63 @@ const pickApkAssetUrl = (release: GithubRelease): string | null => {
     return apk?.browser_download_url ?? null;
 };
 
+/** 一条发布里我们真正要的东西。 */
+export type PickedRelease = {
+    release: GithubRelease;
+    tag: string;
+    version: string;
+    channel: ReleaseChannel;
+};
+
+/**
+ * 从发布列表里挑出「这个通道能收到的最新一版」。
+ *
+ * 为什么不是直接读 `releases/latest`：latest 只给一条，而三条通道的包都发在同一个仓库里，
+ * 内测版用户要的是「beta 前缀里最新的那条」，测试版用户要最新的 dev，正式版用户要最新的 v。
+ * 列表接口一次给二十条，按 tag 前缀筛一遍、按版本号比一遍就够了。
+ *
+ * 比版本号而不是按列表顺序取第一条：两个通道交叠时（内测用户也会收到正式版热修），
+ * 顺序不保证是版本顺序，而「谁的数字大」是确定的。
+ */
+export const pickBestRelease = (
+    releases: GithubRelease[],
+    channel: ReleaseChannel,
+): PickedRelease | null => {
+    let best: PickedRelease | null = null;
+    for (const release of releases) {
+        if (release.draft) continue;
+        const tag = (release.tag_name ?? release.name ?? '').trim();
+        if (!tag) continue;
+        if (!channelAcceptsTag(channel, tag)) continue;
+        const version = resolveLatestVersion(tag, release.assets ?? []);
+        if (!version || !/\d/.test(version)) continue;
+        if (!best || isVersionNewer(version, best.version)) {
+            best = { release, tag, version, channel: channelOfTag(tag) };
+        }
+    }
+    return best;
+};
+
 /**
  * 检查更新。
  *
  * 失败一律归到 'error' 而不是抛异常：调用方是启动流程和设置页按钮，
  * 网络不通是常态（飞行模式、公司网络、GitHub 被墙），不该让它们各自写一遍 catch。
+ *
+ * `channel` 决定要哪条通道的发布：正式版只看 `v…`，内测版还看 `beta-v…`，测试版三种都看。
  */
 export const checkForAppUpdate = async (
     sourceUrl: string = DEFAULT_UPDATE_SOURCE_URL,
+    channel: ReleaseChannel = 'stable',
 ): Promise<AppUpdateCheckResult> => {
     const currentVersion = getCurrentAppVersion();
 
+    // latest → 列表：同一个源地址，只把末段的 latest 去掉。
+    const listUrl = releaseListUrl(sourceUrl);
+    const separator = listUrl.includes('?') ? '&' : '?';
     let response: Response;
     try {
-        response = await fetch(sourceUrl, {
+        response = await fetch(`${listUrl}${separator}per_page=20`, {
             headers: { Accept: 'application/vnd.github+json' },
             cache: 'no-store',
         });
@@ -170,33 +226,36 @@ export const checkForAppUpdate = async (
         return { status: 'error', message: response.status === 404 ? 'not-found' : `http-${response.status}` };
     }
 
-    let release: GithubRelease;
+    let payload: GithubRelease[] | GithubRelease;
     try {
-        release = await response.json() as GithubRelease;
+        payload = await response.json() as GithubRelease[] | GithubRelease;
     } catch {
         return { status: 'error', message: 'invalid-json' };
     }
 
-    const tag = release.tag_name ?? release.name ?? '';
-    const assets = release.assets ?? [];
-    const latestVersion = resolveLatestVersion(tag, assets);
-    if (!latestVersion || !/\d/.test(latestVersion)) {
+    // 设置里可以把源改成任意「latest 形式」的地址，那种地址回的是一条对象，一并兼容。
+    const releases = Array.isArray(payload) ? payload : payload ? [payload] : [];
+    const picked = pickBestRelease(releases, channel);
+    if (!picked) {
         return { status: 'error', message: 'no-version' };
     }
 
-    if (!isVersionNewer(latestVersion, currentVersion)) {
-        return { status: 'current', latestVersion };
+    if (!isVersionNewer(picked.version, currentVersion)) {
+        return { status: 'current', latestVersion: picked.version };
     }
 
+    const { release } = picked;
     return {
         status: 'update',
         info: {
-            latestVersion,
+            latestVersion: picked.version,
             currentVersion,
             releaseNotes: (release.body ?? '').trim(),
             releaseUrl: resolveReleasePage(sourceUrl, release.html_url),
             downloadUrl: pickApkAssetUrl(release),
             publishedAt: release.published_at ?? '',
+            releaseChannel: picked.channel,
+            tag: picked.tag,
         },
     };
 };

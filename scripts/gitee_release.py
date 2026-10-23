@@ -85,6 +85,7 @@ def main():
     parser.add_argument('--body', required=True, help='更新日志 Markdown 文件')
     parser.add_argument('--apk', required=True)
     parser.add_argument('--branch', default='master', help='release 指向的分支')
+    parser.add_argument('--prerelease', action='store_true', help='标成预发布（内测 / 测试通道）')
     args = parser.parse_args()
 
     token = os.environ.get('GITEE_TOKEN', '').strip()
@@ -111,6 +112,7 @@ def main():
             'tag_name': args.tag,
             'name': args.name,
             'body': notes,
+            'prerelease': bool(args.prerelease),
         })
     else:
         print(f'新建 release：tag={args.tag}')
@@ -119,7 +121,9 @@ def main():
             'name': args.name,
             'body': notes,
             'target_commitish': args.branch,
-            'prerelease': False,
+            # 内测 / 测试通道标预发布：Gitee 网页上会带 Pre-release 标记，
+            # 也不会被当成「最新正式版」。应用内按 tag 前缀自取，不依赖这个字段。
+            'prerelease': bool(args.prerelease),
         })
         if status not in (200, 201):
             print(f'创建 release 失败：HTTP {status} {created}', file=sys.stderr)
